@@ -1,0 +1,14 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, 'Vazirmatn', sans-serif;
+  direction: rtl;
+  background: #f0f2f5;
+}
+
+#root {
+  min-height: 100vh;
+}
