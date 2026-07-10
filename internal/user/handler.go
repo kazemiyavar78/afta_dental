@@ -41,7 +41,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	middleware.SetSessionCookie(c, sess.ID, h.secure)
+	middleware.SetSessionCookie(c, sess.ID.UUID(), h.secure)
 	middleware.SetCSRFCookieOnLogin(c, sess.ID.String(), h.csrfKey, h.secure)
 
 	c.JSON(http.StatusOK, LoginResponse{
@@ -238,6 +238,39 @@ func (h *Handler) ListSecuritySettings(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// GetUserProfile اطلاعات پروفایل کاربر لاگین‌شده و نشست‌های فعال را برمی‌گرداند.
+func (h *Handler) GetUserProfile(c *gin.Context) {
+	userID, _ := c.Get(middleware.ContextKeyUserID)
+	uid, _ := userID.(int)
+
+	userData, err := h.service.GetUserByID(uid, uid, "")
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	sessions, err := h.service.GetUserSessions(uid)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+
+	sessionResponses := make([]SessionResponse, 0, len(sessions))
+	for _, s := range sessions {
+		sessionResponses = append(sessionResponses, SessionResponse{
+			ID:           s.ID.String(),
+			Ip:           s.Ip,
+			Browser:      s.Browser,
+			CreationTime: s.CreationTime.Format("2006-01-02T15:04:05Z"),
+			UserID:       s.PersonnelAccountID,
+		})
+	}
+
+	c.JSON(http.StatusOK, UserProfileResponse{
+		User:     *userData,
+		Sessions: sessionResponses,
+	})
+}
+
 // ListSessions لیست نشست‌ها.
 func (h *Handler) ListSessions(c *gin.Context) {
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
@@ -250,6 +283,7 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
+
 
 	var resp []SessionResponse
 	for _, s := range sessions {

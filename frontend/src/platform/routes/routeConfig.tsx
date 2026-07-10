@@ -10,6 +10,8 @@ import { FundListPage } from '@/modules/fund/pages/FundListPage';
 import { FundFormPage } from '@/modules/fund/pages/FundFormPage';
 import { TariffListPage } from '@/modules/tariff/pages/TariffListPage';
 import { TariffFormPage } from '@/modules/tariff/pages/TariffFormPage';
+import { SettingsPage } from '@/modules/settings/pages/SettingsPage';
+import { ProfilePage } from '@/modules/profile/pages/ProfilePage';
 
 /** تعریف مسیر اپلیکیشن */
 export type AppRoute = {
@@ -38,4 +40,8 @@ export const routeConfig: AppRoute[] = [
 
   { path: '/tariff', element: <TariffListPage />, requiredPermission: 'tariff.read' },
   { path: '/tariff/new', element: <TariffFormPage />, requiredPermission: 'tariff.create' },
+
+  { path: '/settings', element: <SettingsPage />, requiredPermission: 'security.settings' },
+
+  { path: '/profile', element: <ProfilePage /> },
 ];

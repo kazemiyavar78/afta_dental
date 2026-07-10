@@ -37,18 +37,18 @@ type ChangePasswordRequest struct {
 
 // UserResponse پاسخ اطلاعات کاربر (بدون فیلدهای حساس).
 type UserResponse struct {
-	ID           int     `json:"id"`
-	Username     string  `json:"username"`
-	Address      string  `json:"address"`
-	Name         string  `json:"name"`
-	Family       string  `json:"family"`
-	PhoneNumber  string  `json:"phone_number"`
-	MedicalCode  *string `json:"medical_code"`
-	RoleID       int     `json:"role_id"`
-	RoleName     string  `json:"role_name"`
-	IsActive     bool    `json:"is_active"`
-	IsLocked     bool    `json:"is_locked"`
-	LastLoginAt  *string `json:"last_login_at"`
+	ID          int     `json:"id"`
+	Username    string  `json:"username"`
+	Address     string  `json:"address"`
+	Name        string  `json:"name"`
+	Family      string  `json:"family"`
+	PhoneNumber string  `json:"phone_number"`
+	MedicalCode *string `json:"medical_code"`
+	RoleID      int     `json:"role_id"`
+	RoleName    string  `json:"role_name"`
+	IsActive    bool    `json:"is_active"`
+	IsLocked    bool    `json:"is_locked"`
+	LastLoginAt *string `json:"last_login_at"`
 }
 
 // MeResponse پاسخ اطلاعات کاربر لاگین‌شده همراه مجوزها.
@@ -88,4 +88,10 @@ type SessionResponse struct {
 	Browser      string `json:"browser"`
 	CreationTime string `json:"creation_time"`
 	UserID       int    `json:"user_id"`
+}
+
+// UserProfileResponse پاسخ اطلاعات کاربر پروفایل.
+type UserProfileResponse struct {
+	User     UserResponse      `json:"user"`
+	Sessions []SessionResponse `json:"sessions"`
 }

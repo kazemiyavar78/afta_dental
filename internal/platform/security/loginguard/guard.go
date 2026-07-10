@@ -46,21 +46,21 @@ func (r *gormRepository) RecordFailedAttempt(ip string, maxFailed, lockMinutes i
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Exec(`
-			MERGE LoginAttempts WITH (HOLDLOCK) AS target
-			USING (SELECT @p1 AS Ip) AS source
-			ON target.Ip = source.Ip
-			WHEN MATCHED THEN
-				UPDATE SET
-					FailedCount = target.FailedCount + 1,
-					LastAttemptAt = @p2,
-					LockedUntil = CASE
-						WHEN target.FailedCount + 1 >= @p3 THEN DATEADD(MINUTE, @p4, @p2)
-						ELSE target.LockedUntil
-					END
-			WHEN NOT MATCHED THEN
-				INSERT (Ip, FailedCount, LastAttemptAt, LockedUntil)
-				VALUES (@p1, 1, @p2, CASE WHEN 1 >= @p3 THEN DATEADD(MINUTE, @p4, @p2) ELSE NULL END);
-		`, ip, now, maxFailed, lockMinutes)
+		MERGE LoginAttempts WITH (HOLDLOCK) AS target
+		USING (SELECT ? AS Ip) AS source
+		ON target.Ip = source.Ip
+		WHEN MATCHED THEN
+			UPDATE SET
+				FailedCount = target.FailedCount + 1,
+				LastAttemptAt = ?,
+				LockedUntil = CASE
+					WHEN target.FailedCount + 1 >= ? THEN DATEADD(MINUTE, ?, ?)
+					ELSE target.LockedUntil
+				END
+		WHEN NOT MATCHED THEN
+			INSERT (Ip, FailedCount, LastAttemptAt, LockedUntil)
+			VALUES (?, 1, ?, CASE WHEN 1 >= ? THEN DATEADD(MINUTE, ?, ?) ELSE NULL END);
+	`, ip, now, maxFailed, lockMinutes, now, ip, now, maxFailed, lockMinutes, now)
 
 		if result.Error != nil {
 			return result.Error

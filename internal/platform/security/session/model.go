@@ -9,7 +9,7 @@ import (
 
 // Session مدل جدول نشست‌ها.
 type Session struct {
-	ID                 uuid.UUID `gorm:"column:Id;type:uniqueidentifier;primaryKey"`
+	ID                 MSSQLUUID `gorm:"column:Id;type:uniqueidentifier;primaryKey"`
 	Ip                 string    `gorm:"column:Ip;size:45;not null"`
 	Browser            string    `gorm:"column:Browser;size:512;not null"`
 	CreationTime       time.Time `gorm:"column:CreationTime;not null"`
@@ -48,7 +48,8 @@ func (r *gormRepository) Create(session *Session) error {
 
 func (r *gormRepository) FindByID(id uuid.UUID) (*Session, error) {
 	var s Session
-	err := r.db.Where("Id = ?", id).First(&s).Error
+	// MSSQLUUID تا Value() بایت‌ها را به فرمت SQL Server تبدیل کند.
+	err := r.db.Where("Id = ?", MSSQLUUID(id)).First(&s).Error
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +63,7 @@ func (r *gormRepository) FindByUserID(userID int) ([]Session, error) {
 }
 
 func (r *gormRepository) Delete(id uuid.UUID) error {
-	return r.db.Where("Id = ?", id).Delete(&Session{}).Error
+	return r.db.Where("Id = ?", MSSQLUUID(id)).Delete(&Session{}).Error
 }
 
 func (r *gormRepository) DeleteByUserID(userID int) error {

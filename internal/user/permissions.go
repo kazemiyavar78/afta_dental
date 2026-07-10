@@ -7,7 +7,7 @@ var defaultRolePermissions = map[string][]string{
 		"reception.read", "reception.create",
 		"organization.read", "organization.create",
 		"fund.read", "fund.create",
-		"tariff.read", "tariff.create",
+		"tariff.read", "tariff.create","security.settings", 
 	},
 	"Reception": {
 		"reception.read", "reception.create",

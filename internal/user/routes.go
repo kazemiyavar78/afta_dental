@@ -30,6 +30,7 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 
 		// نشست‌ها
 		auth.GET("/sessions", h.ListSessions)
+		auth.GET("/profile", h.GetUserProfile)
 		auth.DELETE("/sessions/:id", h.DeleteSession)
 	}
 }

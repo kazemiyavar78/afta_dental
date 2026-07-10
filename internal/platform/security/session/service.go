@@ -49,7 +49,7 @@ func (s *Service) CreateSession(userID int, ip, browser string) (*Session, error
 	}
 
 	sess := &Session{
-		ID:                 uuid.New(),
+		ID:                 NewMSSQLUUID(),
 		Ip:                 ip,
 		Browser:            browser,
 		CreationTime:       time.Now().UTC(),
@@ -61,6 +61,15 @@ func (s *Service) CreateSession(userID int, ip, browser string) (*Session, error
 	}
 
 	return sess, nil
+}
+
+// GetSessionsByUserID نشست‌های یک کاربر را برمی‌گرداند.
+func (s *Service) GetSessionsByUserID(userID int) ([]Session, error) {
+	sessions, err := s.repo.FindByUserID(userID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن سشن ها.", err.Error(), 500)
+	}
+	return sessions, nil
 }
 
 // GetSession نشست را با شناسه برمی‌گرداند.

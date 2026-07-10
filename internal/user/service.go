@@ -204,6 +204,15 @@ func (s *Service) GetUserByID(id int, actorUserID int, actorRole string) (*UserR
 	return s.toResponse(user), nil
 }
 
+// دریافت سشن های کاربر
+func (s *Service) GetUserSessions(userID int) ([]session.Session, error) {
+	sessions, err := s.session.GetSessionsByUserID(userID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن سشن ها.", err.Error(), 500)
+	}
+	return sessions, nil
+}
+
 // ListUsers لیست کاربران (فقط Admin).
 func (s *Service) ListUsers(actorRole string) ([]UserResponse, error) {
 	if actorRole != "Admin" {
