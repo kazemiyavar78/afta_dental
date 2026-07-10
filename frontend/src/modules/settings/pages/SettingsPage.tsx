@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Modal, Form, Input, message } from 'antd';
+import { Button, Modal, Form, Input } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { PageHeader } from '@/platform/components/PageHeader';
@@ -28,6 +28,7 @@ export function SettingsPage() {
   });
 
   const columns: ColumnsType<SecuritySetting> = [
+    { title: 'شناسه', dataIndex: 'id', key: 'id', hidden: true },
     { title: 'کلید تنظیم', dataIndex: 'name', key: 'name' },
     { title: 'مقدار فعلی', dataIndex: 'value', key: 'value' },
     {
@@ -64,7 +65,7 @@ export function SettingsPage() {
           layout="vertical"
           onFinish={(values) => {
             if (!editing) return;
-            mutation.mutate({ name: editing.name, value: values.value });
+            mutation.mutate({ id: editing.id, name: editing.name, value: values.value });
           }}
         >
           <Form.Item name="value" label="مقدار جدید">

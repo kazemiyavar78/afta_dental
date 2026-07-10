@@ -71,12 +71,14 @@ type LoginResponse struct {
 
 // UpdateSecuritySettingRequest درخواست تغییر تنظیم امنیتی.
 type UpdateSecuritySettingRequest struct {
+	ID    int    `json:"id" binding:"required"`
 	Name  string `json:"name" binding:"required"`
 	Value string `json:"value" binding:"required"`
 }
 
 // SecuritySettingResponse پاسخ تنظیم امنیتی.
 type SecuritySettingResponse struct {
+	ID    int    `json:"id"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }

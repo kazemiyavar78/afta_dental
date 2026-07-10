@@ -432,11 +432,11 @@ func (s *Service) ListRoles() ([]RoleResponse, error) {
 }
 
 // UpdateSecuritySetting تنظیم امنیتی را به‌روزرسانی می‌کند (فقط Admin).
-func (s *Service) UpdateSecuritySetting(name, value string, actorUserID int, actorRole, ip string) error {
+func (s *Service) UpdateSecuritySetting(id int, value string, actorUserID int, actorRole, ip string) error {
 	if actorRole != "Admin" {
 		return apperror.ErrForbidden
 	}
-	return s.settings.UpdateSetting(name, value, actorUserID, ip)
+	return s.settings.UpdateSettingByID(id, value, actorUserID, ip)
 }
 
 // GetSecuritySettings تنظیمات امنیتی را برمی‌گرداند (فقط Admin).
@@ -444,7 +444,7 @@ func (s *Service) GetSecuritySettings(actorRole string) ([]settings.SecuritySett
 	if actorRole != "Admin" {
 		return nil, apperror.ErrForbidden
 	}
-	return s.settings.GetAllSettings()
+	return s.settings.GetAllSettings(true)
 }
 
 func (s *Service) toResponse(user *User) *UserResponse {

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
+	
 )
 
 // Handler کنترلر HTTP ماژول کاربران.
@@ -206,12 +207,13 @@ func (h *Handler) UpdateSecuritySetting(c *gin.Context) {
 		return
 	}
 
+
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
 	role, _ := c.Get(middleware.ContextKeyRoleName)
 	roleName, _ := role.(string)
 
-	if err := h.service.UpdateSecuritySetting(req.Name, req.Value, uid, roleName, c.ClientIP()); err != nil {
+	if err := h.service.UpdateSecuritySetting(req.ID, req.Value, uid, roleName, c.ClientIP()); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -232,7 +234,7 @@ func (h *Handler) ListSecuritySettings(c *gin.Context) {
 
 	var resp []SecuritySettingResponse
 	for _, s := range settings {
-		resp = append(resp, SecuritySettingResponse{Name: s.SettingName, Value: s.SettingValue})
+		resp = append(resp, SecuritySettingResponse{ID: s.ID, Name: s.SettingName, Value: s.SettingValue})
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -283,7 +285,6 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-
 
 	var resp []SessionResponse
 	for _, s := range sessions {
