@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/tpdenta/afta-reception/internal/fund"
+	"github.com/tpdenta/afta-reception/internal/logs"
 	"github.com/tpdenta/afta-reception/internal/organization"
 	"github.com/tpdenta/afta-reception/internal/platform/config"
 	"github.com/tpdenta/afta-reception/internal/platform/db"
@@ -125,8 +126,11 @@ func main() {
 	tariffHandler := tariff.NewHandler(tariff.NewService(database, auditMgr))
 	tariff.RegisterRoutes(api, tariffHandler)
 
+	logsHandler := logs.NewHandler(auditMgr.Repository())
+	logs.RegisterRoutes(api, logsHandler)
+
 	srv := &http.Server{
-		Addr:         ":" + cfg.ServerPort,
+		Addr:         "192.168.1.60:" + cfg.ServerPort,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,

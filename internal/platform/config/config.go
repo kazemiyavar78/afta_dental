@@ -34,7 +34,7 @@ func Load() (*Config, error) {
 		LogRetentionTicker:   getDurationEnv("LOG_RETENTION_TICKER", 15*time.Minute),
 		IntegrityTicker:      getDurationEnv("INTEGRITY_TICKER", 15*time.Minute),
 		SecureCookies:        getBoolEnv("SECURE_COOKIES", true),
-		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "http://localhost:3000"),
+		AllowedOrigins:       getEnv("ALLOWED_ORIGINS", "http://192.168.1.60:5173,http://localhost:5173"),
 		RateLimitPerMinute:   getIntEnv("RATE_LIMIT_PER_MINUTE", 120),
 		LoginRateLimitPerMin: getIntEnv("LOGIN_RATE_LIMIT_PER_MINUTE", 10),
 	}

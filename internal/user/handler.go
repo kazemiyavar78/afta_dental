@@ -2,12 +2,13 @@ package user
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
-	
 )
 
 // Handler کنترلر HTTP ماژول کاربران.
@@ -273,20 +274,36 @@ func (h *Handler) GetUserProfile(c *gin.Context) {
 	})
 }
 
-// ListSessions لیست نشست‌ها.
+// ListSessions لیست نشست‌ها. Admin می‌تواند با ?user_id فیلتر کند.
 func (h *Handler) ListSessions(c *gin.Context) {
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
 	role, _ := c.Get(middleware.ContextKeyRoleName)
 	roleName, _ := role.(string)
 
-	sessions, err := h.sessionSvc.ListSessions(uid, roleName)
+	var sessions []session.Session
+	var err error
+
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		targetID, parseErr := strconv.Atoi(userIDStr)
+		if parseErr != nil {
+			middleware.WriteError(c, apperror.New("VALIDATION_ERROR", "شناسه کاربر نامعتبر است.", parseErr.Error(), 400))
+			return
+		}
+		if roleName != "Admin" && targetID != uid {
+			middleware.WriteError(c, apperror.ErrForbidden)
+			return
+		}
+		sessions, err = h.sessionSvc.GetSessionsByUserID(targetID)
+	} else {
+		sessions, err = h.sessionSvc.ListSessions(uid, roleName)
+	}
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
 
-	var resp []SessionResponse
+	resp := make([]SessionResponse, 0, len(sessions))
 	for _, s := range sessions {
 		resp = append(resp, SessionResponse{
 			ID:           s.ID.String(),

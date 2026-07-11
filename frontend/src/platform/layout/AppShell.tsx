@@ -10,6 +10,7 @@ import {
   DollarOutlined,
   TagsOutlined,
   SettingOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -41,6 +42,7 @@ export function AppShell({ children }: AppShellProps) {
     { key: '/organization', icon: <BankOutlined />, label: 'سازمان', permission: 'organization.read' },
     { key: '/fund', icon: <DollarOutlined />, label: 'صندوق', permission: 'fund.read' },
     { key: '/tariff', icon: <TagsOutlined />, label: 'تعرفه', permission: 'tariff.read' },
+    { key: '/logs', icon: <FileTextOutlined />, label: 'لاگ‌ها', permission: 'logs.read' },
 
     { key: '/settings', icon: <SettingOutlined />, label: 'تنظیمات', permission: 'security.settings' },
   ];

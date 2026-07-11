@@ -61,19 +61,25 @@ func RequestLoggerMiddleware() gin.HandlerFunc {
 }
 
 // CORSMiddleware تنظیم CORS برای فرانت React.
+// allowedOrigins لیست originهای مجاز با جداکننده ویرگول است.
 func CORSMiddleware(allowedOrigins string) gin.HandlerFunc {
 	origins := strings.Split(allowedOrigins, ",")
+	allowed := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			allowed[trimmed] = struct{}{}
+		}
+	}
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		for _, o := range origins {
-			if strings.TrimSpace(o) == origin {
-				c.Header("Access-Control-Allow-Origin", origin)
-				break
-			}
+		if _, ok := allowed[origin]; ok {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Vary", "Origin")
 		}
-		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token, Authorization")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Max-Age", "86400")
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)

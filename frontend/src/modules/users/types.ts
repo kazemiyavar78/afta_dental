@@ -18,6 +18,15 @@ export type Role = {
   name: string;
 };
 
+export type Session = {
+  id: string;
+  ip: string;
+  browser: string;
+  creation_time: string;
+  user_id: number;
+};
+
+
 export type CreateUserPayload = {
   username: string;
   password: string;

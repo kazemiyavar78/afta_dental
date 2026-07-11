@@ -3,21 +3,24 @@ package user
 // مجوزهای پیش‌فرض هر نقش — در فاز بعدی از جدول RolePermissions خوانده می‌شود.
 var defaultRolePermissions = map[string][]string{
 	"Admin": {
-		"users.read", "users.create", "users.update",
+		"users.read", "users.create", "users.update", "users.listSessions",
 		"reception.read", "reception.create",
 		"organization.read", "organization.create",
 		"fund.read", "fund.create",
-		"tariff.read", "tariff.create","security.settings", 
+		"tariff.read", "tariff.create", "security.settings",
+		"logs.read",
 	},
 	"Reception": {
 		"reception.read", "reception.create",
 		"organization.read",
 		"fund.read",
 		"tariff.read",
+		"logs.read",
 	},
 	"Doctor": {
 		"reception.read",
 		"tariff.read",
+		"logs.read",
 	},
 }
 

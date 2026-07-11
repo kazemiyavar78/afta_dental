@@ -1,5 +1,5 @@
 import { httpClient } from '@/platform/api/httpClient';
-import type { CreateUserPayload, Role, UpdateUserPayload, User } from './types';
+import type { CreateUserPayload, Role, Session, UpdateUserPayload, User } from './types';
 
 /** دریافت لیست کاربران */
 export async function fetchUsers(): Promise<User[]> {
@@ -29,4 +29,20 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
 export async function fetchRoles(): Promise<Role[]> {
   const { data } = await httpClient.get<Role[]>('/roles');
   return data;
+}
+
+/**
+ * دریافت لیست نشست‌ها.
+ * @param userId در صورت ارسال، فقط نشست‌های همان کاربر برگردانده می‌شود
+ */
+export async function fetchSessions(userId?: number): Promise<Session[]> {
+  const { data } = await httpClient.get<Session[]>('/sessions', {
+    params: userId != null ? { user_id: userId } : undefined,
+  });
+  return data;
+}
+
+/** حذف یک نشست */
+export async function deleteSession(sessionId: string): Promise<void> {
+  await httpClient.delete(`/sessions/${sessionId}`);
 }

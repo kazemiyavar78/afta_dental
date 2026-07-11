@@ -18,7 +18,9 @@ export function setUnauthorizedHandler(handler: () => void): void {
 
 /** نمونه Axios با interceptor های امنیتی */
 export const httpClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL.startsWith('http')
+    ? API_BASE_URL
+    : `http://192.168.1.60:8080${API_BASE_URL}`,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

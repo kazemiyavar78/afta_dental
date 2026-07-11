@@ -8,14 +8,14 @@ import (
 
 // SecurityEvent مدل جدول رویدادهای امنیتی با Hash-Chain.
 type SecurityEvent struct {
-	ID          int64     `gorm:"column:ID;primaryKey;autoIncrement"`
-	UserID      *int      `gorm:"column:UserID"`
-	Ip          string    `gorm:"column:Ip;size:45;not null"`
-	EventType   string    `gorm:"column:EventType;size:100;not null"`
-	Description string    `gorm:"column:Description;type:nvarchar(max);not null"`
-	CreatedAt   time.Time `gorm:"column:CreatedAt;not null"`
-	PrevHash    string    `gorm:"column:PrevHash;size:128;not null"`
-	RowHash     string    `gorm:"column:RowHash;size:128;not null"`
+	ID          int64     `gorm:"column:ID;primaryKey;autoIncrement" json:"id"`
+	UserID      *int      `gorm:"column:UserID" json:"user_id,omitempty"`
+	Ip          string    `gorm:"column:Ip;size:45;not null" json:"ip"`
+	EventType   string    `gorm:"column:EventType;size:100;not null" json:"event_type"`
+	Description string    `gorm:"column:Description;type:nvarchar(max);not null" json:"description"`
+	CreatedAt   time.Time `gorm:"column:CreatedAt;not null" json:"created_at"`
+	PrevHash    string    `gorm:"column:PrevHash;size:128;not null" json:"-"`
+	RowHash     string    `gorm:"column:RowHash;size:128;not null" json:"-"`
 }
 
 // TableName نام جدول در دیتابیس.
@@ -32,6 +32,16 @@ type Repository interface {
 	Count() (int64, error)
 	DeleteOldest(count int) (int64, error)
 	GetTableSizeMB() (float64, error)
+	FindEvents(filter EventFilter) ([]SecurityEvent, error)
+}
+
+// EventFilter فیلترهای جستجوی رویدادهای امنیتی.
+type EventFilter struct {
+	UserID   *int
+	IP       string
+	Username string
+	FromDate *time.Time
+	ToDate   *time.Time
 }
 
 type gormRepository struct {
@@ -107,4 +117,39 @@ func (r *gormRepository) GetTableSizeMB() (float64, error) {
 		return 0, err
 	}
 	return result.ReservedKB / 1024.0, nil
+}
+
+// FindEvents رویدادهای امنیتی را با فیلترهای اختیاری برمی‌گرداند.
+func (r *gormRepository) FindEvents(filter EventFilter) ([]SecurityEvent, error) {
+	var events []SecurityEvent
+	q := r.db.Model(&SecurityEvent{})
+
+	if filter.UserID != nil {
+		q = q.Where("SecurityEvents.UserID = ?", *filter.UserID)
+	}
+	if filter.IP != "" {
+		q = q.Where("SecurityEvents.Ip = ?", filter.IP)
+	}
+	if filter.Username != "" {
+		q = q.Joins("INNER JOIN Users ON Users.ID = SecurityEvents.UserID").
+			Where("Users.Username = ?", filter.Username)
+	}
+	if filter.FromDate != nil && !filter.FromDate.IsZero() {
+		q = q.Where("SecurityEvents.CreatedAt >= ?", *filter.FromDate)
+	}
+	if filter.ToDate != nil && !filter.ToDate.IsZero() {
+		to := endOfDay(*filter.ToDate)
+		q = q.Where("SecurityEvents.CreatedAt <= ?", to)
+	}
+
+	err := q.Order("SecurityEvents.ID DESC").Find(&events).Error
+	return events, err
+}
+
+// endOfDay پایان روز را برای فیلتر toDate برمی‌گرداند.
+func endOfDay(t time.Time) time.Time {
+	if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
+		return t.Add(24*time.Hour - time.Nanosecond)
+	}
+	return t
 }

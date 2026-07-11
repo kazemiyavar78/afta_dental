@@ -1,5 +1,5 @@
 import { Button, Tag } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import { PageHeader } from '@/platform/components/PageHeader';
@@ -36,16 +36,27 @@ export function UserListPage() {
       title: 'عملیات',
       key: 'actions',
       render: (_, record) => (
-        <PermissionGuard permission="users.update">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => navigate(`/users/${record.id}/edit`)}
-          >
-            ویرایش
-          </Button>
-        </PermissionGuard>
-      ),
+        <>
+          <PermissionGuard permission="users.update">
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => navigate(`/users/${record.id}/edit`)}
+            >
+              ویرایش
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="users.listSessions">
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/users/${record.id}/sessions`)}
+            >
+              نشست‌ها
+            </Button>
+          </PermissionGuard>
+        </>
+        ),
     },
   ];
 
