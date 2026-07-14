@@ -5,7 +5,8 @@ var defaultRolePermissions = map[string][]string{
 	"Admin": {
 		"users.read", "users.create", "users.update", "users.listSessions",
 		"reception.read", "reception.create",
-		"organization.read", "organization.create",
+		"organization.read", "organization.create", "organization.update", "organization.delete",
+		"services.read", "services.create", "services.update", "services.delete",
 		"fund.read", "fund.create",
 		"tariff.read", "tariff.create", "security.settings",
 		"logs.read",
@@ -13,12 +14,14 @@ var defaultRolePermissions = map[string][]string{
 	"Reception": {
 		"reception.read", "reception.create",
 		"organization.read",
+		"services.read",
 		"fund.read",
 		"tariff.read",
 		"logs.read",
 	},
 	"Doctor": {
 		"reception.read",
+		"services.read",
 		"tariff.read",
 		"logs.read",
 	},

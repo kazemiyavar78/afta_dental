@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
 	"github.com/tpdenta/afta-reception/internal/reception"
+	"github.com/tpdenta/afta-reception/internal/services"
 	"github.com/tpdenta/afta-reception/internal/tariff"
 	"github.com/tpdenta/afta-reception/internal/user"
 )
@@ -46,6 +49,7 @@ func main() {
 	migrate.Migrate(database, []interface{}{
 		&user.User{},
 		&organization.Organization{},
+		&services.ServiceItem{},
 		&fund.Fund{},
 		&tariff.Tariff{},
 		&reception.Reception{},
@@ -88,7 +92,11 @@ func main() {
 	go worker.Start(ctx)
 
 	// راه‌اندازی HTTP
-	gin.SetMode(gin.ReleaseMode)
+	if cfg.DevMode {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	r := gin.New()
 
 	// ترتیب میدلورها طبق سند
@@ -117,8 +125,13 @@ func main() {
 	receptionHandler := reception.NewHandler(reception.NewService(database, auditMgr))
 	reception.RegisterRoutes(api, receptionHandler)
 
-	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr))
+	orgEncryptSvc := encryption.NewOrganizationEncryptionService(encryptor)
+	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr, orgEncryptSvc))
 	organization.RegisterRoutes(api, orgHandler)
+
+	svcEncryptSvc := encryption.NewServiceEncryptionService(encryptor)
+	servicesHandler := services.NewHandler(services.NewService(database, auditMgr, svcEncryptSvc))
+	services.RegisterRoutes(api, servicesHandler)
 
 	fundHandler := fund.NewHandler(fund.NewService(database, auditMgr))
 	fund.RegisterRoutes(api, fundHandler)
@@ -129,8 +142,14 @@ func main() {
 	logsHandler := logs.NewHandler(auditMgr.Repository())
 	logs.RegisterRoutes(api, logsHandler)
 
+	if cfg.DevMode {
+		log.Println("حالت توسعه: فقط API فعال است — فرانت را با npm run dev در پوشه frontend اجرا کنید")
+	} else {
+		registerFrontendRoutes(r, "./frontend/dist")
+	}
+
 	srv := &http.Server{
-		Addr:         "192.168.1.60:" + cfg.ServerPort,
+		Addr:         cfg.ServerHost + ":" + cfg.ServerPort,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -138,7 +157,11 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("سرور روی پورت %s در حال اجرا...", cfg.ServerPort)
+		if cfg.DevMode {
+			log.Printf("API روی %s:%s در حال اجرا (حالت توسعه)...", cfg.ServerHost, cfg.ServerPort)
+		} else {
+			log.Printf("سرور روی %s:%s در حال اجرا...", cfg.ServerHost, cfg.ServerPort)
+		}
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("خطا در اجرای سرور: %v", err)
 		}
@@ -153,4 +176,40 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+}
+
+// registerFrontendRoutes فایل‌های build شده React را سرو می‌کند و برای مسیرهای SPA به index.html برمی‌گردد.
+func registerFrontendRoutes(r *gin.Engine, distDir string) {
+	indexHTML := filepath.Join(distDir, "index.html")
+	absDist, err := filepath.Abs(distDir)
+	if err != nil {
+		absDist = filepath.Clean(distDir)
+	}
+
+	r.GET("/", func(c *gin.Context) {
+		c.File(indexHTML)
+	})
+
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+
+		relativePath := strings.TrimPrefix(path, "/")
+		requested := filepath.Join(distDir, relativePath)
+		absRequested, err := filepath.Abs(requested)
+		if err != nil || !strings.HasPrefix(absRequested, absDist) {
+			c.File(indexHTML)
+			return
+		}
+
+		if info, err := os.Stat(requested); err == nil && !info.IsDir() {
+			c.File(requested)
+			return
+		}
+
+		c.File(indexHTML)
+	})
 }

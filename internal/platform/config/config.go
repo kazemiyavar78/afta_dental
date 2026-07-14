@@ -3,11 +3,14 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Config تنظیمات برنامه که از متغیرهای محیطی خوانده می‌شود.
 type Config struct {
+	DevMode             bool
+	ServerHost          string
 	ServerPort          string
 	DatabaseURL         string
 	AESKey              string
@@ -25,6 +28,8 @@ type Config struct {
 // Load تنظیمات را از متغیرهای محیطی بارگذاری می‌کند.
 func Load() (*Config, error) {
 	cfg := &Config{
+		DevMode:              isDevMode(),
+		ServerHost:           getEnv("SERVER_HOST", "0.0.0.0"),
 		ServerPort:           getEnv("SERVER_PORT", "8080"),
 		DatabaseURL:          getEnv("DATABASE_URL", ""),
 		AESKey:               getEnv("AES_KEY", ""),
@@ -91,4 +96,13 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 		}
 	}
 	return fallback
+}
+
+// isDevMode بررسی می‌کند برنامه در حالت توسعه اجرا می‌شود یا خیر.
+// APP_ENV=development یا DEV_MODE=true حالت توسعه را فعال می‌کند.
+func isDevMode() bool {
+	if getBoolEnv("DEV_MODE", false) {
+		return true
+	}
+	return strings.EqualFold(getEnv("APP_ENV", "production"), "development")
 }

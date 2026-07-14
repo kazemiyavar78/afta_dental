@@ -20,7 +20,7 @@ export function setUnauthorizedHandler(handler: () => void): void {
 export const httpClient = axios.create({
   baseURL: API_BASE_URL.startsWith('http')
     ? API_BASE_URL
-    : `http://192.168.1.60:8080${API_BASE_URL}`,
+    : `${API_BASE_URL}`,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

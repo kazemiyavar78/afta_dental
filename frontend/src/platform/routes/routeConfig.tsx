@@ -7,6 +7,7 @@ import { ReceptionListPage } from '@/modules/reception/pages/ReceptionListPage';
 import { ReceptionFormPage } from '@/modules/reception/pages/ReceptionFormPage';
 import { OrganizationListPage } from '@/modules/organization/pages/OrganizationListPage';
 import { OrganizationFormPage } from '@/modules/organization/pages/OrganizationFormPage';
+import { ServicesPage } from '@/modules/services/pages/ServicesPage';
 import { FundListPage } from '@/modules/fund/pages/FundListPage';
 import { FundFormPage } from '@/modules/fund/pages/FundFormPage';
 import { TariffListPage } from '@/modules/tariff/pages/TariffListPage';
@@ -41,6 +42,9 @@ export const routeConfig: AppRoute[] = [
 
   { path: '/organization', element: <OrganizationListPage />, requiredPermission: 'organization.read' },
   { path: '/organization/new', element: <OrganizationFormPage />, requiredPermission: 'organization.create' },
+  { path: '/organization/:id/edit', element: <OrganizationFormPage />, requiredPermission: 'organization.update' },
+
+  { path: '/services', element: <ServicesPage />, requiredPermission: 'services.read' },
 
   { path: '/fund', element: <FundListPage />, requiredPermission: 'fund.read' },
   { path: '/fund/new', element: <FundFormPage />, requiredPermission: 'fund.create' },

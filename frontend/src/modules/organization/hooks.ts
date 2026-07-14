@@ -2,8 +2,11 @@
 
 import { z } from 'zod';
 
+/** اسکیمای ایجاد/ویرایش سازمان */
 export const organizationSchema = z.object({
   name: z.string().min(1, 'نام سازمان الزامی است'),
+  is_takmili: z.boolean(),
+  is_active: z.boolean(),
 });
 
 export type OrganizationFormValues = z.infer<typeof organizationSchema>;

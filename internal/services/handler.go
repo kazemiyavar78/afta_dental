@@ -1,5 +1,4 @@
-// این ماژول نمونه است؛ باقی Entity ها و Endpoint ها طبق همین الگو در فازهای بعدی تکمیل می‌شوند.
-package organization
+package services
 
 import (
 	"net/http"
@@ -8,13 +7,13 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 )
 
-// Handler کنترلر HTTP ماژول سازمان.
+// Handler کنترلر HTTP ماژول خدمات.
 type Handler struct{ service *Service }
 
-// NewHandler نمونه Handler سازمان می‌سازد.
+// NewHandler نمونه Handler خدمات می‌سازد.
 func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 
-// Create سازمان جدید ایجاد می‌کند.
+// Create خدمت جدید ایجاد می‌کند.
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -30,7 +29,7 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
-// GetByID سازمان را با شناسه برمی‌گرداند.
+// GetByID خدمت را با شناسه برمی‌گرداند.
 func (h *Handler) GetByID(c *gin.Context) {
 	var uri struct {
 		ID int `uri:"id" binding:"required"`
@@ -47,7 +46,7 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// List لیست سازمان‌ها را برمی‌گرداند.
+// List لیست خدمات را برمی‌گرداند.
 func (h *Handler) List(c *gin.Context) {
 	list, err := h.service.List()
 	if err != nil {
@@ -57,7 +56,7 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
-// Update سازمان را بروزرسانی می‌کند.
+// Update خدمت را بروزرسانی می‌کند.
 func (h *Handler) Update(c *gin.Context) {
 	var uri struct {
 		ID int `uri:"id" binding:"required"`
@@ -80,7 +79,7 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// Delete سازمان را حذف می‌کند.
+// Delete خدمت را حذف می‌کند.
 func (h *Handler) Delete(c *gin.Context) {
 	var uri struct {
 		ID int `uri:"id" binding:"required"`
