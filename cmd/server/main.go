@@ -17,6 +17,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/logs"
 	"github.com/tpdenta/afta-reception/internal/organization"
 	organizationpackage "github.com/tpdenta/afta-reception/internal/organizationPackage"
+	"github.com/tpdenta/afta-reception/internal/patient"
 	"github.com/tpdenta/afta-reception/internal/platform/config"
 	"github.com/tpdenta/afta-reception/internal/platform/db"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
@@ -72,6 +73,7 @@ func main() {
 		&organizationpackage.OrganizationPackage{},
 		&organizationpackage.OrganizationPackageRelation{},
 		&organization.Organization{},
+		&patient.Patient{},
 		&services.ServiceItem{},
 		&fund.Fund{},
 		&tariff.Tariff{},
@@ -159,6 +161,10 @@ func main() {
 
 	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc))
 	organization.RegisterRoutes(api, orgHandler)
+
+	patientEncryptSvc := encryption.NewPatientEncryptionService(encryptor)
+	patientHandler := patient.NewHandler(patient.NewService(database, auditMgr, patientEncryptSvc))
+	patient.RegisterRoutes(api, patientHandler)
 
 	svcEncryptSvc := encryption.NewServiceEncryptionService(encryptor)
 	servicesHandler := services.NewHandler(services.NewService(database, auditMgr, svcEncryptSvc))

@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfigProvider } from 'antd';
 import faIR from 'antd/locale/fa_IR';
+import JalaliProvider from 'antd-jalali-v5';
 import { AuthProvider } from '@/platform/auth/AuthContext';
 import { RequireAuth } from '@/platform/auth/RequireAuth';
 import { AppShell } from '@/platform/layout/AppShell';
@@ -20,6 +21,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <ConfigProvider direction="rtl" locale={faIR}>
+        <JalaliProvider />
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>

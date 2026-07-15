@@ -14,6 +14,7 @@ import {
   AppstoreOutlined,
   InboxOutlined,
   SafetyCertificateOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -43,6 +44,7 @@ export function AppShell({ children }: AppShellProps) {
     { key: '/users', icon: <TeamOutlined />, label: 'کاربران', permission: 'users.read' },
     { key: '/roles', icon: <SafetyCertificateOutlined />, label: 'نقش‌ها', permission: 'roles.read' },
     { key: '/reception', icon: <MedicineBoxOutlined />, label: 'پذیرش', permission: 'reception.read' },
+    { key: '/patients', icon: <IdcardOutlined />, label: 'بیماران', permission: 'patient.read' },
     { key: '/organization', icon: <BankOutlined />, label: 'سازمان', permission: 'organization.read' },
     {
       key: '/organization-packages',
