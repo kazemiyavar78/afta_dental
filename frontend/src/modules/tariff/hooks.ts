@@ -1,10 +1,20 @@
-// این ماژول نمونه است؛ باقی فیلدها/صفحات طبق همین الگو در فازهای بعدی اضافه می‌شوند.
-
 import { z } from 'zod';
 
-export const tariffSchema = z.object({
-  name: z.string().min(1, 'نام تعرفه الزامی است'),
-  amount: z.number().min(0, 'مبلغ باید مثبت باشد'),
+/** اسکیمای فرم تست/ذخیره تعرفه (سازمان + سه مبلغ مرکز) */
+export const tariffCalculateSchema = z.object({
+  organization_id: z.number().min(1, 'انتخاب سازمان الزامی است'),
+  technical_amount: z.number().min(0, 'نباید منفی باشد'),
+  professional_center_amount: z.number().min(0, 'نباید منفی باشد'),
+  consumption_center_amount: z.number().min(0, 'نباید منفی باشد'),
 });
 
-export type TariffFormValues = z.infer<typeof tariffSchema>;
+export type TariffCalculateFormValues = z.infer<typeof tariffCalculateSchema>;
+
+/** اسکیمای فرم بازمحاسبه یک تعرفه */
+export const tariffRecalculateSchema = z.object({
+  technical_amount: z.number().min(0, 'نباید منفی باشد'),
+  professional_center_amount: z.number().min(0, 'نباید منفی باشد'),
+  consumption_center_amount: z.number().min(0, 'نباید منفی باشد'),
+});
+
+export type TariffRecalculateFormValues = z.infer<typeof tariffRecalculateSchema>;

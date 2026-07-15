@@ -33,7 +33,7 @@ func (h *Handler) Create(c *gin.Context) {
 // GetByID سازمان را با شناسه برمی‌گرداند.
 func (h *Handler) GetByID(c *gin.Context) {
 	var uri struct {
-		ID int `uri:"id" binding:"required"`
+		ID uint `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)
@@ -60,7 +60,7 @@ func (h *Handler) List(c *gin.Context) {
 // Update سازمان را بروزرسانی می‌کند.
 func (h *Handler) Update(c *gin.Context) {
 	var uri struct {
-		ID int `uri:"id" binding:"required"`
+		ID uint `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)
@@ -83,7 +83,7 @@ func (h *Handler) Update(c *gin.Context) {
 // Delete سازمان را حذف می‌کند.
 func (h *Handler) Delete(c *gin.Context) {
 	var uri struct {
-		ID int `uri:"id" binding:"required"`
+		ID uint `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)

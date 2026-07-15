@@ -1,4 +1,4 @@
-package services
+package organizationpackage
 
 import (
 	"net/http"
@@ -7,13 +7,13 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 )
 
-// Handler کنترلر HTTP ماژول خدمات.
+// Handler کنترلر HTTP ماژول بسته‌های تعرفه.
 type Handler struct{ service *Service }
 
-// NewHandler نمونه Handler خدمات می‌سازد.
+// NewHandler نمونه Handler بسته‌های تعرفه می‌سازد.
 func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 
-// Create خدمت جدید ایجاد می‌کند.
+// Create بسته تعرفه جدید ایجاد می‌کند.
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -29,10 +29,10 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
-// GetByID خدمت را با شناسه برمی‌گرداند.
+// GetByID بسته تعرفه را با شناسه برمی‌گرداند.
 func (h *Handler) GetByID(c *gin.Context) {
 	var uri struct {
-		ID uint `uri:"id" binding:"required"`
+		ID int `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)
@@ -46,7 +46,7 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// List لیست خدمات را برمی‌گرداند.
+// List لیست بسته‌های تعرفه را برمی‌گرداند.
 func (h *Handler) List(c *gin.Context) {
 	list, err := h.service.List()
 	if err != nil {
@@ -56,10 +56,10 @@ func (h *Handler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
-// Update خدمت را بروزرسانی می‌کند.
+// Update بسته تعرفه را بروزرسانی می‌کند.
 func (h *Handler) Update(c *gin.Context) {
 	var uri struct {
-		ID uint `uri:"id" binding:"required"`
+		ID int `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)
@@ -79,10 +79,10 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// Delete خدمت را حذف می‌کند.
+// Delete بسته تعرفه را حذف می‌کند.
 func (h *Handler) Delete(c *gin.Context) {
 	var uri struct {
-		ID uint `uri:"id" binding:"required"`
+		ID int `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		middleware.WriteError(c, err)

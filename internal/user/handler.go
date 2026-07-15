@@ -190,7 +190,7 @@ func (h *Handler) GetMe(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// ListRoles لیست نقش‌ها.
+// ListRoles لیست کامل نقش‌ها (مدیریت).
 func (h *Handler) ListRoles(c *gin.Context) {
 	roles, err := h.service.ListRoles()
 	if err != nil {
@@ -198,6 +198,99 @@ func (h *Handler) ListRoles(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, roles)
+}
+
+// ListAssignableRoles نقش‌های قابل انتصاب را برمی‌گرداند.
+func (h *Handler) ListAssignableRoles(c *gin.Context) {
+	roles, err := h.service.ListAssignableRoles()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, roles)
+}
+
+// GetRole نقش را با شناسه برمی‌گرداند.
+func (h *Handler) GetRole(c *gin.Context) {
+	var uri struct {
+		ID int `uri:"id" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	resp, err := h.service.GetRole(uri.ID)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// CreateRole نقش جدید ایجاد می‌کند.
+func (h *Handler) CreateRole(c *gin.Context) {
+	var req CreateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	uid, _ := c.Get(middleware.ContextKeyUserID)
+	resp, err := h.service.CreateRole(req, uid.(int), c.ClientIP())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// UpdateRole نقش را بروزرسانی می‌کند.
+func (h *Handler) UpdateRole(c *gin.Context) {
+	var uri struct {
+		ID int `uri:"id" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	var req UpdateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	uid, _ := c.Get(middleware.ContextKeyUserID)
+	resp, err := h.service.UpdateRole(uri.ID, req, uid.(int), c.ClientIP())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// DeleteRole نقش را حذف می‌کند.
+func (h *Handler) DeleteRole(c *gin.Context) {
+	var uri struct {
+		ID int `uri:"id" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	uid, _ := c.Get(middleware.ContextKeyUserID)
+	if err := h.service.DeleteRole(uri.ID, uid.(int), c.ClientIP()); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListPermissions لیست مجوزهای سیستم را برمی‌گرداند.
+func (h *Handler) ListPermissions(c *gin.Context) {
+	perms, err := h.service.ListPermissions()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, perms)
 }
 
 // UpdateSecuritySetting تغییر تنظیم امنیتی.

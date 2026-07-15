@@ -1,6 +1,6 @@
 // این ماژول نمونه است؛ باقی فیلدها/صفحات طبق همین الگو در فازهای بعدی اضافه می‌شوند.
 
-import { Form, Input, Switch, Button, Card, Space, Spin } from 'antd';
+import { Form, Input, Switch, Button, Card, Space, Spin, Select } from 'antd';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { useApiQuery } from '@/platform/hooks/useApiQuery';
 import { useApiMutation } from '@/platform/hooks/useApiMutation';
 import { organizationSchema, type OrganizationFormValues } from '../hooks';
 import { createOrganization, fetchOrganization, updateOrganization } from '../api';
+import { fetchOrganizationPackages } from '@/modules/organization-packages/api';
 
 /** صفحه ایجاد/ویرایش سازمان */
 export function OrganizationFormPage() {
@@ -17,6 +18,11 @@ export function OrganizationFormPage() {
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const organizationId = Number(id);
+
+  const { data: packages, isLoading: loadingPackages } = useApiQuery({
+    queryKey: ['organization-packages'],
+    queryFn: fetchOrganizationPackages,
+  });
 
   const { data: existing, isLoading: loadingExisting } = useApiQuery({
     queryKey: ['organizations', organizationId],
@@ -30,6 +36,7 @@ export function OrganizationFormPage() {
       name: '',
       is_takmili: false,
       is_active: true,
+      package_id: 0,
     },
   });
 
@@ -39,6 +46,7 @@ export function OrganizationFormPage() {
         name: existing.name,
         is_takmili: existing.is_takmili,
         is_active: existing.is_active,
+        package_id: existing.package_id,
       });
     }
   }, [existing, reset]);
@@ -57,11 +65,12 @@ export function OrganizationFormPage() {
     onSuccess: () => navigate('/organization'),
   });
 
-  if (isEdit && loadingExisting) {
+  if ((isEdit && loadingExisting) || loadingPackages) {
     return <Spin size="large" />;
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending;
+  const packageOptions = (packages ?? []).map((p) => ({ label: p.package_name, value: p.id }));
 
   return (
     <>
@@ -79,6 +88,25 @@ export function OrganizationFormPage() {
         >
           <Form.Item label="نام" validateStatus={errors.name ? 'error' : ''} help={errors.name?.message}>
             <Controller name="name" control={control} render={({ field }) => <Input {...field} />} />
+          </Form.Item>
+          <Form.Item
+            label="بسته تعرفه"
+            validateStatus={errors.package_id ? 'error' : ''}
+            help={errors.package_id?.message}
+          >
+            <Controller
+              name="package_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  {...field}
+                  options={packageOptions}
+                  placeholder="انتخاب بسته تعرفه"
+                  showSearch
+                  optionFilterProp="label"
+                />
+              )}
+            />
           </Form.Item>
           <Form.Item label="بیمه تکمیلی">
             <Controller

@@ -84,7 +84,8 @@ func (s *Service) verifyIntegrity(item *ServiceItem, actorID int, ip string) err
 }
 
 // applyRequest فیلدهای درخواست را روی مدل خدمت اعمال می‌کند.
-func applyRequest(item *ServiceItem, code, name, intlCode, features string, tech, prof, cons, rate, tariff float64, defCount, maxCount int, isActive bool) {
+func applyRequest(item *ServiceItem, code, name, intlCode, 
+	features string, tech, prof, cons float64, rate ,tariff int, defCount, maxCount int, isActive bool, hasDentalDirection bool, allowMultipleUse bool) {
 	item.ServiceCode = code
 	item.Name = name
 	item.TechnicalCoefficient = tech
@@ -97,6 +98,8 @@ func applyRequest(item *ServiceItem, code, name, intlCode, features string, tech
 	item.MaximumCount = maxCount
 	item.ServiceFeatures = features
 	item.IsActive = isActive
+	item.HasDentalDirection = hasDentalDirection
+	item.AllowMultipleUse = allowMultipleUse
 }
 
 // Create خدمت جدید می‌سازد و هش امنیتی آن را تولید می‌کند.
@@ -108,7 +111,7 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	item := &ServiceItem{}
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive)
+		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {
@@ -124,7 +127,7 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 }
 
 // Get خدمت را با شناسه برمی‌گرداند.
-func (s *Service) Get(id int) (*Response, error) {
+func (s *Service) Get(id uint) (*Response, error) {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.ErrNotFound
@@ -148,8 +151,30 @@ func (s *Service) List() ([]Response, error) {
 	return result, nil
 }
 
+// FindByExcludeServices خدمات را به جز شناسه‌های ارسالی برمی‌گرداند.
+func (s *Service) FindByExcludeServices(excludeServices []uint) ([]ServiceItem, error) {
+	list, err := s.repo.FindByExcludeServices(excludeServices)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمات.", err.Error(), 500)
+	}
+
+	return list, nil
+}
+
+// FindItemByID مدل دامنه خدمت را با شناسه برمی‌گرداند (برای محاسبات داخلی مثل تعرفه).
+func (s *Service) FindItemByID(id uint) (*ServiceItem, error) {
+	item, err := s.repo.FindByID(id)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمت.", err.Error(), 500)
+	}
+	return item, nil
+}
+
 // Update پس از تایید هش یکپارچگی، خدمت را بروزرسانی و هش جدید تولید می‌کند.
-func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Response, error) {
+func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
 	if err := validateFeatures(req.ServiceFeatures); err != nil {
 		return nil, err
 	}
@@ -168,7 +193,7 @@ func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Re
 
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive)
+		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {
@@ -184,7 +209,7 @@ func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Re
 }
 
 // Delete پس از تایید هش یکپارچگی، خدمت را به‌صورت soft-delete حذف می‌کند.
-func (s *Service) Delete(id int, actorID int, ip string) error {
+func (s *Service) Delete(id uint, actorID int, ip string) error {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound

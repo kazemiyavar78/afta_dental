@@ -30,6 +30,7 @@ export function OrganizationListPage() {
   const columns: ColumnsType<Organization> = [
     { title: 'شناسه', dataIndex: 'id', key: 'id', width: 80 },
     { title: 'نام', dataIndex: 'name', key: 'name' },
+    { title: 'بسته تعرفه', dataIndex: 'package_name', key: 'package_name' },
     {
       title: 'نوع',
       key: 'type',

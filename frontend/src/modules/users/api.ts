@@ -25,9 +25,9 @@ export async function updateUser(id: number, payload: UpdateUserPayload): Promis
   return data;
 }
 
-/** دریافت لیست نقش‌ها */
+/** دریافت لیست نقش‌های قابل انتصاب */
 export async function fetchRoles(): Promise<Role[]> {
-  const { data } = await httpClient.get<Role[]>('/roles');
+  const { data } = await httpClient.get<Role[]>('/roles/assignable');
   return data;
 }
 

@@ -15,8 +15,18 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 	{
 		auth.POST("/logout", h.Logout)
 		auth.GET("/me", h.GetMe)
-		auth.GET("/roles", h.ListRoles)
 		auth.POST("/change-password", h.ChangePassword)
+
+		// نقش‌های قابل انتصاب (برای فرم کاربر)
+		auth.GET("/roles/assignable", h.ListAssignableRoles)
+
+		// مدیریت نقش‌ها
+		auth.GET("/roles", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.ListRoles)
+		auth.POST("/roles", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.CreateRole)
+		auth.GET("/roles/:id", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.GetRole)
+		auth.PUT("/roles/:id", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.UpdateRole)
+		auth.DELETE("/roles/:id", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.DeleteRole)
+		auth.GET("/permissions", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.ListPermissions)
 
 		// مدیریت کاربران
 		auth.POST("/users", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.CreateUser)

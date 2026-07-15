@@ -12,6 +12,8 @@ import {
   SettingOutlined,
   FileTextOutlined,
   AppstoreOutlined,
+  InboxOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -39,8 +41,15 @@ export function AppShell({ children }: AppShellProps) {
 
   const allMenuItems: MenuDef[] = [
     { key: '/users', icon: <TeamOutlined />, label: 'کاربران', permission: 'users.read' },
+    { key: '/roles', icon: <SafetyCertificateOutlined />, label: 'نقش‌ها', permission: 'roles.read' },
     { key: '/reception', icon: <MedicineBoxOutlined />, label: 'پذیرش', permission: 'reception.read' },
     { key: '/organization', icon: <BankOutlined />, label: 'سازمان', permission: 'organization.read' },
+    {
+      key: '/organization-packages',
+      icon: <InboxOutlined />,
+      label: 'بسته‌های تعرفه',
+      permission: 'organization_packages.read',
+    },
     { key: '/services', icon: <AppstoreOutlined />, label: 'خدمات', permission: 'services.read' },
     { key: '/fund', icon: <DollarOutlined />, label: 'صندوق', permission: 'fund.read' },
     { key: '/tariff', icon: <TagsOutlined />, label: 'تعرفه', permission: 'tariff.read' },

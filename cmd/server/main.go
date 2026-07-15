@@ -16,6 +16,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/fund"
 	"github.com/tpdenta/afta-reception/internal/logs"
 	"github.com/tpdenta/afta-reception/internal/organization"
+	organizationpackage "github.com/tpdenta/afta-reception/internal/organizationPackage"
 	"github.com/tpdenta/afta-reception/internal/platform/config"
 	"github.com/tpdenta/afta-reception/internal/platform/db"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
@@ -46,8 +47,30 @@ func main() {
 	if err != nil {
 		log.Fatalf("خطا در اتصال دیتابیس: %v", err)
 	}
+	// if err := migrate.DropTable(database, []interface{}{
+	// 	&user.User{},
+	// 	&organizationpackage.OrganizationPackage{},
+	// 	&organizationpackage.OrganizationPackageRelation{},
+	// 	&organization.Organization{},
+	// 	&services.ServiceItem{},
+	// 	&fund.Fund{},
+	// 	&tariff.Tariff{},
+	// 	&reception.Reception{},
+	// 	&settings.SecuritySetting{},
+	// 	&session.Session{},
+	// 	&audit.SecurityEvent{},
+	// 	&user.Role{},
+	// 	&user.Permission{},
+	// 	&user.RolePermission{},
+	// 	&loginguard.LoginAttempt{},
+	// }); err != nil {
+	// 	log.Fatalf("خطا در حذف جدول organization_packages: %v", err)
+	// }
+
 	migrate.Migrate(database, []interface{}{
 		&user.User{},
+		&organizationpackage.OrganizationPackage{},
+		&organizationpackage.OrganizationPackageRelation{},
 		&organization.Organization{},
 		&services.ServiceItem{},
 		&fund.Fund{},
@@ -81,6 +104,9 @@ func main() {
 	loginGuard := loginguard.NewGuard(database, settingsSvc)
 
 	userSvc := user.NewService(database, signer, userEncryptSvc, settingsSvc, auditMgr, sessionSvc, loginGuard)
+	if err := userSvc.SyncPermissions(); err != nil {
+		log.Printf("هشدار: همگام‌سازی مجوزها: %v", err)
+	}
 	if err := userSvc.FixRoleIntegrityHashes(); err != nil {
 		log.Printf("هشدار: اصلاح هش نقش‌ها: %v", err)
 	}
@@ -126,7 +152,12 @@ func main() {
 	reception.RegisterRoutes(api, receptionHandler)
 
 	orgEncryptSvc := encryption.NewOrganizationEncryptionService(encryptor)
-	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr, orgEncryptSvc))
+	pkgEncryptSvc := encryption.NewOrganizationPackageEncryptionService(encryptor)
+	orgPackageSvc := organizationpackage.NewService(database, auditMgr, pkgEncryptSvc)
+	orgPackageHandler := organizationpackage.NewHandler(orgPackageSvc)
+	organizationpackage.RegisterRoutes(api, orgPackageHandler)
+
+	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc))
 	organization.RegisterRoutes(api, orgHandler)
 
 	svcEncryptSvc := encryption.NewServiceEncryptionService(encryptor)
@@ -136,7 +167,9 @@ func main() {
 	fundHandler := fund.NewHandler(fund.NewService(database, auditMgr))
 	fund.RegisterRoutes(api, fundHandler)
 
-	tariffHandler := tariff.NewHandler(tariff.NewService(database, auditMgr))
+	tariffHandler := tariff.NewHandler(tariff.NewService(database, auditMgr,
+		organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc),
+		services.NewService(database, auditMgr, svcEncryptSvc)))
 	tariff.RegisterRoutes(api, tariffHandler)
 
 	logsHandler := logs.NewHandler(auditMgr.Repository())

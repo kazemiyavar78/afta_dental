@@ -7,6 +7,7 @@ import { ReceptionListPage } from '@/modules/reception/pages/ReceptionListPage';
 import { ReceptionFormPage } from '@/modules/reception/pages/ReceptionFormPage';
 import { OrganizationListPage } from '@/modules/organization/pages/OrganizationListPage';
 import { OrganizationFormPage } from '@/modules/organization/pages/OrganizationFormPage';
+import { OrganizationPackagesPage } from '@/modules/organization-packages/pages/OrganizationPackagesPage';
 import { ServicesPage } from '@/modules/services/pages/ServicesPage';
 import { FundListPage } from '@/modules/fund/pages/FundListPage';
 import { FundFormPage } from '@/modules/fund/pages/FundFormPage';
@@ -15,6 +16,7 @@ import { TariffFormPage } from '@/modules/tariff/pages/TariffFormPage';
 import { SettingsPage } from '@/modules/settings/pages/SettingsPage';
 import { ProfilePage } from '@/modules/profile/pages/ProfilePage';
 import { LogsPage } from '@/modules/logs/pages/LogsPage';
+import { RolesPage } from '@/modules/roles/pages/RolesPage';
 
 /** تعریف مسیر اپلیکیشن */
 export type AppRoute = {
@@ -37,6 +39,8 @@ export const routeConfig: AppRoute[] = [
     requiredPermission: 'users.listSessions',
   },
 
+  { path: '/roles', element: <RolesPage />, requiredPermission: 'roles.read' },
+
   { path: '/reception', element: <ReceptionListPage />, requiredPermission: 'reception.read' },
   { path: '/reception/new', element: <ReceptionFormPage />, requiredPermission: 'reception.create' },
 
@@ -44,13 +48,19 @@ export const routeConfig: AppRoute[] = [
   { path: '/organization/new', element: <OrganizationFormPage />, requiredPermission: 'organization.create' },
   { path: '/organization/:id/edit', element: <OrganizationFormPage />, requiredPermission: 'organization.update' },
 
+  {
+    path: '/organization-packages',
+    element: <OrganizationPackagesPage />,
+    requiredPermission: 'organization_packages.read',
+  },
+
   { path: '/services', element: <ServicesPage />, requiredPermission: 'services.read' },
 
   { path: '/fund', element: <FundListPage />, requiredPermission: 'fund.read' },
   { path: '/fund/new', element: <FundFormPage />, requiredPermission: 'fund.create' },
 
   { path: '/tariff', element: <TariffListPage />, requiredPermission: 'tariff.read' },
-  { path: '/tariff/new', element: <TariffFormPage />, requiredPermission: 'tariff.create' },
+  { path: '/tariff/new', element: <TariffFormPage />, requiredPermission: 'tariff.read' },
 
   { path: '/settings', element: <SettingsPage />, requiredPermission: 'security.settings' },
 

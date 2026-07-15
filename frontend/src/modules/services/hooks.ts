@@ -14,6 +14,9 @@ export const serviceSchema = z.object({
   maximum_count: z.number().int('باید عدد صحیح باشد').min(0, 'نباید منفی باشد'),
   service_features: z.enum(['', '#', '*', '#*']),
   is_active: z.boolean(),
+  is_dental_direction: z.boolean(),
+  allow_multiple_use: z.boolean(),
 });
+
 
 export type ServiceFormValues = z.infer<typeof serviceSchema>;

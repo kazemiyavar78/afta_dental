@@ -13,8 +13,8 @@ type ServiceSensitiveData struct {
 	TechnicalCoefficient    float64
 	ProfessionalCoefficient float64
 	ConsumptionCoefficient  float64
-	ServiceRate             float64
-	ServiceTariff           float64
+	ServiceRate             int
+	ServiceTariff           int
 	InternationalCode       string
 	DefaultCount            int
 	MaximumCount            int
@@ -33,7 +33,7 @@ func NewServiceEncryptionService(encryptor *Encryptor) *ServiceEncryptionService
 }
 
 func (s *ServiceEncryptionService) sensitiveFields(data ServiceSensitiveData) string {
-	return fmt.Sprintf("%s|%s|%g|%g|%g|%g|%g|%s|%d|%d|%s|%t",
+	return fmt.Sprintf("%s|%s|%g|%g|%g|%d|%d|%s|%d|%d|%s|%t",
 		data.ServiceCode,
 		data.Name,
 		data.TechnicalCoefficient,

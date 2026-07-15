@@ -57,10 +57,41 @@ type MeResponse struct {
 	Permissions []string     `json:"permissions"`
 }
 
-// RoleResponse پاسخ اطلاعات نقش.
+// RoleResponse پاسخ مختصر نقش (برای انتصاب به کاربر).
 type RoleResponse struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
+}
+
+// CreateRoleRequest بدنه ایجاد نقش.
+type CreateRoleRequest struct {
+	Name          string `json:"name" binding:"required"`
+	Description   string `json:"description"`
+	PermissionIDs []int  `json:"permission_ids"`
+}
+
+// UpdateRoleRequest بدنه بروزرسانی نقش.
+type UpdateRoleRequest struct {
+	Name          string `json:"name" binding:"required"`
+	Description   string `json:"description"`
+	PermissionIDs []int  `json:"permission_ids"`
+}
+
+// PermissionResponse پاسخ مجوز سیستم.
+type PermissionResponse struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// RoleDetailResponse پاسخ کامل نقش همراه مجوزها.
+type RoleDetailResponse struct {
+	ID            int                  `json:"id"`
+	Name          string               `json:"name"`
+	Description   string               `json:"description"`
+	Permissions   []PermissionResponse `json:"permissions"`
+	PermissionIDs []int                `json:"permission_ids"`
+	IntegrityOK   bool                 `json:"integrity_ok"`
 }
 
 // LoginResponse پاسخ ورود موفق.

@@ -49,6 +49,8 @@ const emptyFormValues: ServiceFormValues = {
   maximum_count: 0,
   service_features: '',
   is_active: true,
+  is_dental_direction: false,
+  allow_multiple_use: false,
 };
 
 /** صفحه مدیریت خدمات (لیست، ایجاد، ویرایش و حذف در یک صفحه) */
@@ -88,6 +90,8 @@ export function ServicesPage() {
         maximum_count: editing.maximum_count,
         service_features: editing.service_features,
         is_active: editing.is_active,
+        is_dental_direction: editing.is_dental_direction,
+        allow_multiple_use: editing.allow_multiple_use,
       });
     } else {
       reset(emptyFormValues);
@@ -359,6 +363,20 @@ export function ServicesPage() {
           <Form.Item label="فعال">
             <Controller
               name="is_active"
+              control={control}
+              render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
+            />
+          </Form.Item>
+          <Form.Item label="جهت دندان دارد">
+            <Controller
+              name="is_dental_direction"
+              control={control}
+              render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
+            />
+          </Form.Item>
+          <Form.Item label="اجازه استفاده بیش از یکبار در پرونده">
+            <Controller
+              name="allow_multiple_use"
               control={control}
               render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
             />

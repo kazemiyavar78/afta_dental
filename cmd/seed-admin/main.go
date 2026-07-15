@@ -41,12 +41,32 @@ func main() {
 	userEncrypt := encryption.NewUserEncryptionService(encryptor)
 
 	repo := user.NewRepository(database)
+	service := user.NewService(database, signer, userEncrypt, nil, auditMgr, nil, nil)
+
+
+
+
 
 	existing, err := repo.FindByUsername(username)
 	if err == nil && existing != nil {
 		fmt.Printf("کاربر %s از قبل وجود دارد (ID=%d)\n", username, existing.ID)
 		return
 	}
+
+	permissions, err := repo.FindAllPermissions()
+	if err != nil {
+		log.Fatalf("مجوزها یافت نشد: %v", err)
+	}
+	permissionIDs := make([]int, len(permissions))
+	for i, permission := range permissions {
+		permissionIDs[i] = permission.ID
+	}
+
+	service.CreateRole(user.CreateRoleRequest{
+		Name:        "Admin",
+		Description: "مدیر سیستم",
+		PermissionIDs: permissionIDs,
+	}, 0, "Admin")
 
 	adminRole, err := repo.FindRoleByName("Admin")
 	if err != nil {
@@ -87,8 +107,9 @@ func main() {
 	_ = settingsSvc.SeedDefaults()
 
 	if adminRole.IntegrityHash == "" {
-		adminRole.IntegrityHash = user.SignRoleIntegrityHash(signer, adminRole)
-		_ = repo.UpdateRoleIntegrity(adminRole)
+		permIDs, _ := repo.FindPermissionIDsByRoleID(adminRole.ID)
+		adminRole.IntegrityHash = user.SignRoleIntegrityHash(signer, adminRole, permIDs)
+		_ = repo.UpdateRole(adminRole)
 	}
 
 	fmt.Printf("کاربر Admin ایجاد شد:\n  Username: %s\n  Password: %s\n  ID: %d\n", username, password, created.ID)

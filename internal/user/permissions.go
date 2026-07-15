@@ -1,38 +1,48 @@
 package user
 
-// مجوزهای پیش‌فرض هر نقش — در فاز بعدی از جدول RolePermissions خوانده می‌شود.
-var defaultRolePermissions = map[string][]string{
-	"Admin": {
-		"users.read", "users.create", "users.update", "users.listSessions",
-		"reception.read", "reception.create",
-		"organization.read", "organization.create", "organization.update", "organization.delete",
-		"services.read", "services.create", "services.update", "services.delete",
-		"fund.read", "fund.create",
-		"tariff.read", "tariff.create", "security.settings",
-		"logs.read",
-	},
-	"Reception": {
-		"reception.read", "reception.create",
-		"organization.read",
-		"services.read",
-		"fund.read",
-		"tariff.read",
-		"logs.read",
-	},
-	"Doctor": {
-		"reception.read",
-		"services.read",
-		"tariff.read",
-		"logs.read",
-	},
+// مجوزهای پیش‌فرض سیستم — در لحظه اجرا در جدول Permissions همگام‌سازی می‌شوند.
+var defaultPermissions = map[string]string{
+	"users.read":                   "خواندن کاربران",
+	"users.create":                 "ایجاد کاربران",
+	"users.update":                 "بروزرسانی کاربران",
+	"users.listSessions":           "لیست جلسات کاربران",
+	"roles.read":                   "خواندن نقش‌ها",
+	"roles.create":                 "ایجاد نقش‌ها",
+	"roles.update":                 "بروزرسانی نقش‌ها",
+	"roles.delete":                 "حذف نقش‌ها",
+	"reception.read":               "خواندن رسیدها",
+	"reception.create":             "ایجاد رسیدها",
+	"organization.read":            "خواندن سازمانها",
+	"organization.create":          "ایجاد سازمانها",
+	"organization.update":          "بروزرسانی سازمانها",
+	"organization.delete":          "حذف سازمانها",
+	"organization_packages.read":   "خواندن بستههای سازمانی",
+	"organization_packages.create": "ایجاد بستههای سازمانی",
+	"organization_packages.update": "بروزرسانی بستههای سازمانی",
+	"organization_packages.delete": "حذف بستههای سازمانی",
+	"services.read":                "خواندن خدمات",
+	"services.create":              "ایجاد خدمات",
+	"services.update":              "بروزرسانی خدمات",
+	"services.delete":              "حذف خدمات",
+	"fund.read":                    "خواندن صندوق",
+	"fund.create":                  "ایجاد صندوق",
+	"fund.update":                  "بروزرسانی صندوق",
+	"fund.delete":                  "حذف صندوق",
+	"tariff.read":                  "خواندن تعرفهها",
+	"tariff.create":                "ایجاد تعرفهها",
+	"tariff.update":                "بروزرسانی تعرفهها",
+	"tariff.delete":                "حذف تعرفهها",
+	"security.settings":            "خواندن تنظیمات امنیتی",
+	"logs.read":                    "خواندن لاگها",
 }
 
-// GetPermissionsForRole لیست نام مجوزهای یک نقش را برمی‌گرداند.
-func GetPermissionsForRole(roleName string) []string {
-	if perms, ok := defaultRolePermissions[roleName]; ok {
-		return perms
+// DefaultPermissionCatalog کپی از کاتالوگ ثابت مجوزهای سیستم را برمی‌گرداند.
+func DefaultPermissionCatalog() map[string]string {
+	out := make(map[string]string, len(defaultPermissions))
+	for k, v := range defaultPermissions {
+		out[k] = v
 	}
-	return []string{}
+	return out
 }
 
 // HasPermission بررسی وجود مجوز در لیست.

@@ -57,9 +57,8 @@ func (s *Service) CreateUser(req CreateUserRequest, actorUserID int, ip string) 
 		return nil, apperror.New("WEAK_PASSWORD", errs[0], "password policy violation", 400)
 	}
 
-	_, err := s.repo.FindRoleByID(req.RoleID)
-	if err != nil {
-		return nil, apperror.New("INVALID_ROLE", "نقش انتخاب‌شده معتبر نیست.", err.Error(), 400)
+	if err := s.ensureAssignableRole(req.RoleID, actorUserID, ip); err != nil {
+		return nil, err
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -131,6 +130,10 @@ func (s *Service) HandleUserLogin(req LoginRequest, ip, browser string) (*User, 
 		_ = s.audit.LogEvent(&user.ID, ip, audit.EventDataTampering,
 			fmt.Sprintf("دستکاری داده کاربر %s", user.Username))
 		return nil, nil, apperror.ErrIntegrity
+	}
+
+	if err := s.verifyRoleIntegrityForUser(&user.Role, user.ID, ip); err != nil {
+		return nil, nil, err
 	}
 
 	if user.IsLocked || !user.IsActive {
@@ -264,6 +267,9 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, act
 		if actorRole != "Admin" {
 			return nil, apperror.ErrForbidden
 		}
+		if err := s.ensureAssignableRole(*req.RoleID, actorUserID, ip); err != nil {
+			return nil, err
+		}
 		user.RoleID = *req.RoleID
 	}
 	if req.IsActive != nil && actorRole == "Admin" {
@@ -372,7 +378,11 @@ func (s *Service) VerifyAllRoles(ip string) (bool, error) {
 		return false, err
 	}
 	for _, r := range roles {
-		if !VerifyRoleIntegrity(s.signer, &r) {
+		permIDs, err := s.repo.FindPermissionIDsByRoleID(r.ID)
+		if err != nil {
+			return false, err
+		}
+		if !VerifyRoleIntegrity(s.signer, &r, permIDs) {
 			_ = s.audit.LogEvent(nil, ip, audit.EventDataTampering,
 				fmt.Sprintf("دستکاری نقش %s", r.Name))
 			return false, nil
@@ -381,18 +391,90 @@ func (s *Service) VerifyAllRoles(ip string) (bool, error) {
 	return true, nil
 }
 
-// FixRoleIntegrityHashes هش یکپارچگی نقش‌های بدون هش را اصلاح می‌کند.
+// SyncPermissions مجوزهای ثابت سیستم را در دیتابیس ایجاد یا بروزرسانی می‌کند.
+func (s *Service) SyncPermissions() error {
+	now := time.Now().UTC()
+	for name, description := range DefaultPermissionCatalog() {
+		existing, err := s.repo.FindPermissionByName(name)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			p := &Permission{
+				Name:          name,
+				Description:   description,
+				IntegrityHash: "",
+				CreatedAt:     now,
+			}
+			if err := s.repo.CreatePermission(p); err != nil {
+				return err
+			}
+			p.IntegrityHash = SignPermissionIntegrityHash(s.signer, p)
+			if err := s.repo.UpdatePermission(p); err != nil {
+				return err
+			}
+			continue
+		}
+		existing.Description = description
+		existing.IntegrityHash = SignPermissionIntegrityHash(s.signer, existing)
+		if err := s.repo.UpdatePermission(existing); err != nil {
+			return err
+		}
+	}
+	return s.ensureAdminHasAllPermissions()
+}
+
+// ensureAdminHasAllPermissions همه مجوزهای سیستم را به نقش Admin منتسب می‌کند و هش را امضا می‌کند.
+func (s *Service) ensureAdminHasAllPermissions() error {
+	adminRole, err := s.repo.FindRoleByName("Admin")
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	allPerms, err := s.repo.FindAllPermissions()
+	if err != nil {
+		return err
+	}
+	permIDs := make([]int, 0, len(allPerms))
+	rps := make([]RolePermission, 0, len(allPerms))
+	for _, p := range allPerms {
+		permIDs = append(permIDs, p.ID)
+		rp := RolePermission{RoleID: adminRole.ID, PermissionID: p.ID}
+		rp.IntegrityHash = SignRolePermissionIntegrityHash(s.signer, &rp)
+		rps = append(rps, rp)
+	}
+	if err := s.repo.ReplaceRolePermissions(adminRole.ID, rps); err != nil {
+		return err
+	}
+	adminRole.IntegrityHash = SignRoleIntegrityHash(s.signer, adminRole, permIDs)
+	return s.repo.UpdateRole(adminRole)
+}
+
+// FixRoleIntegrityHashes هش نقش‌های بدون هش یا نقش‌های قدیمی بدون مجوز را به فرمت جدید مهاجرت می‌دهد.
 func (s *Service) FixRoleIntegrityHashes() error {
 	roles, err := s.repo.FindAllRoles()
 	if err != nil {
 		return err
 	}
-	for _, r := range roles {
-		if r.IntegrityHash == "" {
-			r.IntegrityHash = SignRoleIntegrityHash(s.signer, &r)
-			if err := s.repo.UpdateRoleIntegrity(&r); err != nil {
-				return err
-			}
+	for i := range roles {
+		r := &roles[i]
+		permIDs, err := s.repo.FindPermissionIDsByRoleID(r.ID)
+		if err != nil {
+			return err
+		}
+		if VerifyRoleIntegrity(s.signer, r, permIDs) {
+			continue
+		}
+		// فقط نقش‌های بدون هش یا هش قدیمی بدون انتصاب مجوز مهاجرت می‌شوند؛ دستکاری واقعی حفظ می‌شود.
+		legacyOK := r.IntegrityHash != "" && VerifyRoleIntegrityLegacy(s.signer, r)
+		if r.IntegrityHash != "" && !(legacyOK && len(permIDs) == 0) {
+			continue
+		}
+		r.IntegrityHash = SignRoleIntegrityHash(s.signer, r, permIDs)
+		if err := s.repo.UpdateRole(r); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -412,23 +494,312 @@ func (s *Service) GetMe(userID int) (*MeResponse, error) {
 		return nil, apperror.ErrIntegrity
 	}
 
+	if err := s.verifyRoleIntegrityForUser(&user.Role, user.ID, ""); err != nil {
+		return nil, err
+	}
+
+	perms, err := s.repo.FindPermissionsByRoleID(user.RoleID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزها.", err.Error(), 500)
+	}
+	names := make([]string, 0, len(perms))
+	for _, p := range perms {
+		names = append(names, p.Name)
+	}
+
 	return &MeResponse{
 		User:        *s.toResponse(user),
-		Permissions: GetPermissionsForRole(user.Role.Name),
+		Permissions: names,
 	}, nil
 }
 
-// ListRoles لیست نقش‌ها را برمی‌گرداند.
-func (s *Service) ListRoles() ([]RoleResponse, error) {
+// ListAssignableRoles نقش‌های دارای یکپارچگی معتبر را برای انتصاب برمی‌گرداند.
+func (s *Service) ListAssignableRoles() ([]RoleResponse, error) {
 	roles, err := s.repo.FindAllRoles()
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن نقش‌ها.", err.Error(), 500)
 	}
 	var result []RoleResponse
-	for _, r := range roles {
-		result = append(result, RoleResponse{ID: r.ID, Name: r.Name})
+	for i := range roles {
+		permIDs, err := s.repo.FindPermissionIDsByRoleID(roles[i].ID)
+		if err != nil {
+			return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+		}
+		if !VerifyRoleIntegrity(s.signer, &roles[i], permIDs) {
+			continue
+		}
+		result = append(result, RoleResponse{ID: roles[i].ID, Name: roles[i].Name})
 	}
 	return result, nil
+}
+
+// ListRoles لیست نقش‌ها را با جزئیات مجوز و وضعیت یکپارچگی برمی‌گرداند.
+func (s *Service) ListRoles() ([]RoleDetailResponse, error) {
+	roles, err := s.repo.FindAllRoles()
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن نقش‌ها.", err.Error(), 500)
+	}
+	result := make([]RoleDetailResponse, 0, len(roles))
+	for i := range roles {
+		detail, err := s.toRoleDetail(&roles[i])
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *detail)
+	}
+	return result, nil
+}
+
+// GetRole نقش را با شناسه برمی‌گرداند.
+func (s *Service) GetRole(id int) (*RoleDetailResponse, error) {
+	role, err := s.repo.FindRoleByID(id)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
+	}
+	return s.toRoleDetail(role)
+}
+
+// CreateRole نقش جدید می‌سازد و مجوزها را منتسب می‌کند.
+func (s *Service) CreateRole(req CreateRoleRequest, actorID int, ip string) (*RoleDetailResponse, error) {
+	if _, err := s.repo.FindRoleByName(req.Name); err == nil {
+		return nil, apperror.New("VALIDATION_ERROR", "نقش با این نام از قبل وجود دارد.", "role name exists", 400)
+	} else if err != gorm.ErrRecordNotFound {
+		return nil, apperror.New("DB_ERROR", "خطا در بررسی نام نقش.", err.Error(), 500)
+	}
+
+	perms, err := s.resolvePermissions(req.PermissionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	role := &Role{
+		Name:          req.Name,
+		Description:   req.Description,
+		IntegrityHash: "",
+		CreatedAt:     now,
+	}
+	if err := s.repo.CreateRole(role); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ایجاد نقش.", err.Error(), 500)
+	}
+
+	permIDs := make([]int, 0, len(perms))
+	rps := make([]RolePermission, 0, len(perms))
+	for _, p := range perms {
+		permIDs = append(permIDs, p.ID)
+		rp := RolePermission{RoleID: role.ID, PermissionID: p.ID}
+		rp.IntegrityHash = SignRolePermissionIntegrityHash(s.signer, &rp)
+		rps = append(rps, rp)
+	}
+	if err := s.repo.ReplaceRolePermissions(role.ID, rps); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در انتصاب مجوزها.", err.Error(), 500)
+	}
+
+	role.IntegrityHash = SignRoleIntegrityHash(s.signer, role, permIDs)
+	if err := s.repo.UpdateRole(role); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش نقش.", err.Error(), 500)
+	}
+
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد نقش %s", role.Name))
+	return s.toRoleDetail(role)
+}
+
+// UpdateRole پس از تایید یکپارچگی، نقش و مجوزهای آن را بروزرسانی می‌کند.
+func (s *Service) UpdateRole(id int, req UpdateRoleRequest, actorID int, ip string) (*RoleDetailResponse, error) {
+	role, err := s.repo.FindRoleByID(id)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
+	}
+
+	currentPermIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	if !VerifyRoleIntegrity(s.signer, role, currentPermIDs) {
+		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
+			fmt.Sprintf("نقض یکپارچگی نقش %d (%s)", role.ID, role.Name))
+		return nil, apperror.ErrIntegrity
+	}
+
+	if req.Name != role.Name {
+		if existing, err := s.repo.FindRoleByName(req.Name); err == nil && existing.ID != role.ID {
+			return nil, apperror.New("VALIDATION_ERROR", "نقش با این نام از قبل وجود دارد.", "role name exists", 400)
+		} else if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, apperror.New("DB_ERROR", "خطا در بررسی نام نقش.", err.Error(), 500)
+		}
+	}
+
+	perms, err := s.resolvePermissions(req.PermissionIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	role.Name = req.Name
+	role.Description = req.Description
+
+	permIDs := make([]int, 0, len(perms))
+	rps := make([]RolePermission, 0, len(perms))
+	for _, p := range perms {
+		permIDs = append(permIDs, p.ID)
+		rp := RolePermission{RoleID: role.ID, PermissionID: p.ID}
+		rp.IntegrityHash = SignRolePermissionIntegrityHash(s.signer, &rp)
+		rps = append(rps, rp)
+	}
+	if err := s.repo.ReplaceRolePermissions(role.ID, rps); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در انتصاب مجوزها.", err.Error(), 500)
+	}
+
+	role.IntegrityHash = SignRoleIntegrityHash(s.signer, role, permIDs)
+	if err := s.repo.UpdateRole(role); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی نقش.", err.Error(), 500)
+	}
+
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی نقش %s", role.Name))
+	return s.toRoleDetail(role)
+}
+
+// DeleteRole پس از تایید یکپارچگی، نقش را حذف می‌کند.
+func (s *Service) DeleteRole(id int, actorID int, ip string) error {
+	role, err := s.repo.FindRoleByID(id)
+	if err == gorm.ErrRecordNotFound {
+		return apperror.ErrNotFound
+	}
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
+	}
+	if role.Name == "Admin" {
+		return apperror.New("VALIDATION_ERROR", "حذف نقش Admin مجاز نیست.", "cannot delete admin role", 400)
+	}
+
+	permIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
+		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
+			fmt.Sprintf("نقض یکپارچگی نقش %d (%s)", role.ID, role.Name))
+		return apperror.ErrIntegrity
+	}
+
+	count, err := s.repo.CountUsersByRoleID(role.ID)
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در بررسی کاربران نقش.", err.Error(), 500)
+	}
+	if count > 0 {
+		return apperror.New("VALIDATION_ERROR", "نقش دارای کاربر است و قابل حذف نیست.", "role has users", 400)
+	}
+
+	if err := s.repo.DeleteRolePermissionsByRoleID(role.ID); err != nil {
+		return apperror.New("DB_ERROR", "خطا در حذف مجوزهای نقش.", err.Error(), 500)
+	}
+	if err := s.repo.DeleteRole(role.ID); err != nil {
+		return apperror.New("DB_ERROR", "خطا در حذف نقش.", err.Error(), 500)
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف نقش %s", role.Name))
+	return nil
+}
+
+// ListPermissions لیست مجوزهای سیستم را برمی‌گرداند.
+func (s *Service) ListPermissions() ([]PermissionResponse, error) {
+	perms, err := s.repo.FindAllPermissions()
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزها.", err.Error(), 500)
+	}
+	result := make([]PermissionResponse, 0, len(perms))
+	for _, p := range perms {
+		result = append(result, PermissionResponse{ID: p.ID, Name: p.Name, Description: p.Description})
+	}
+	return result, nil
+}
+
+// ensureAssignableRole وجود نقش و صحت یکپارچگی آن را قبل از انتصاب بررسی می‌کند.
+func (s *Service) ensureAssignableRole(roleID int, actorID int, ip string) error {
+	role, err := s.repo.FindRoleByID(roleID)
+	if err == gorm.ErrRecordNotFound {
+		return apperror.New("INVALID_ROLE", "نقش انتخاب‌شده معتبر نیست.", "role not found", 400)
+	}
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
+	}
+	permIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
+		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
+			fmt.Sprintf("انتصاب نقش دستکاری‌شده %d (%s) رد شد", role.ID, role.Name))
+		return apperror.New("INVALID_ROLE", "نقش انتخاب‌شده به دلیل نقض یکپارچگی قابل انتصاب نیست.", "role integrity failed", 400)
+	}
+	return nil
+}
+
+// verifyRoleIntegrityForUser یکپارچگی نقش کاربر را بررسی می‌کند؛ در صورت نقض ورود/دسترسی را قطع می‌کند.
+func (s *Service) verifyRoleIntegrityForUser(role *Role, userID int, ip string) error {
+	permIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
+		_ = s.audit.LogEvent(&userID, ip, audit.EventDataTampering,
+			fmt.Sprintf("دستکاری نقش %s — ورود/دسترسی کاربر %d رد شد", role.Name, userID))
+		return apperror.ErrIntegrity
+	}
+	return nil
+}
+
+// resolvePermissions شناسه‌های مجوز را اعتبارسنجی و بارگذاری می‌کند.
+func (s *Service) resolvePermissions(ids []int) ([]Permission, error) {
+	unique := make(map[int]struct{}, len(ids))
+	clean := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := unique[id]; ok {
+			continue
+		}
+		unique[id] = struct{}{}
+		clean = append(clean, id)
+	}
+	if len(clean) == 0 {
+		return []Permission{}, nil
+	}
+	perms, err := s.repo.FindPermissionsByIDs(clean)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزها.", err.Error(), 500)
+	}
+	if len(perms) != len(clean) {
+		return nil, apperror.New("VALIDATION_ERROR", "یک یا چند مجوز انتخاب‌شده معتبر نیست.", "invalid permission ids", 400)
+	}
+	return perms, nil
+}
+
+// toRoleDetail مدل نقش را به پاسخ جزئیات تبدیل می‌کند.
+func (s *Service) toRoleDetail(role *Role) (*RoleDetailResponse, error) {
+	perms, err := s.repo.FindPermissionsByRoleID(role.ID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	permIDs := make([]int, 0, len(perms))
+	permResps := make([]PermissionResponse, 0, len(perms))
+	for _, p := range perms {
+		permIDs = append(permIDs, p.ID)
+		permResps = append(permResps, PermissionResponse{ID: p.ID, Name: p.Name, Description: p.Description})
+	}
+	return &RoleDetailResponse{
+		ID:            role.ID,
+		Name:          role.Name,
+		Description:   role.Description,
+		Permissions:   permResps,
+		PermissionIDs: permIDs,
+		IntegrityOK:   VerifyRoleIntegrity(s.signer, role, permIDs),
+	}, nil
 }
 
 // UpdateSecuritySetting تنظیم امنیتی را به‌روزرسانی می‌کند (فقط Admin).

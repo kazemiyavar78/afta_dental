@@ -14,6 +14,8 @@ export type ServiceItem = {
   maximum_count: number;
   service_features: ServiceFeatures;
   is_active: boolean;
+  is_dental_direction: boolean;
+  allow_multiple_use: boolean;
 };
 
 export type ServicePayload = {
@@ -29,4 +31,6 @@ export type ServicePayload = {
   maximum_count: number;
   service_features: ServiceFeatures;
   is_active: boolean;
+  is_dental_direction: boolean;
+  allow_multiple_use: boolean;
 };

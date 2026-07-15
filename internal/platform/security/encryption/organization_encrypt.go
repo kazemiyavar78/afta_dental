@@ -1,41 +1,42 @@
 package encryption
 
-
 import (
-	"fmt"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 )
 
+// OrganizationSensitiveData فیلدهای حساس سازمان برای محاسبه هش یکپارچگی.
 type OrganizationSensitiveData struct {
-	Name string
+	Name      string
 	IsTakmili bool
-	IsActive bool
+	IsActive  bool
+	PackageID uint
 }
 
-// UserEncryptionService سرویس رمزنگاری و SecurityCode کاربر.
+// OrganizationEncryptionService سرویس رمزنگاری و IntegrityHash سازمان.
 type OrganizationEncryptionService struct {
 	encryptor *Encryptor
 }
 
-// NewUserEncryptionService نمونه UserEncryptionService می‌سازد.
+// NewOrganizationEncryptionService نمونه OrganizationEncryptionService می‌سازد.
 func NewOrganizationEncryptionService(encryptor *Encryptor) *OrganizationEncryptionService {
 	return &OrganizationEncryptionService{encryptor: encryptor}
 }
 
 func (s *OrganizationEncryptionService) sensitiveFields(data OrganizationSensitiveData) string {
-	return fmt.Sprintf("%s|%t|%t",
-		data.Name, data.IsTakmili, data.IsActive)
+	return fmt.Sprintf("%s|%t|%t|%d",
+		data.Name, data.IsTakmili, data.IsActive, data.PackageID)
 }
 
-// CreateSecurityCode کد امنیتی کاربر را تولید و رمزنگاری می‌کند.
+// CreateSecurityCode هش امنیتی سازمان را تولید و رمزنگاری می‌کند.
 func (s *OrganizationEncryptionService) CreateSecurityCode(data OrganizationSensitiveData) (string, error) {
 	hash := sha256.Sum256([]byte(s.sensitiveFields(data)))
 	plaintext := hex.EncodeToString(hash[:])
 	return s.encryptor.Encrypt(plaintext)
 }
 
-// CheckUserSecurityCode یکپارچگی SecurityCode را بررسی می‌کند.
+// CheckUserSecurityCode یکپارچگی IntegrityHash سازمان را بررسی می‌کند.
 func (s *OrganizationEncryptionService) CheckUserSecurityCode(data OrganizationSensitiveData, securityCode string) bool {
 	if securityCode == "" {
 		return false

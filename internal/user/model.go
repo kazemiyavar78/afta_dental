@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/tpdenta/afta-reception/internal/platform/security/encryption"
+	
 )
 
 // User مدل جدول کاربران (PersonnelAccount).
@@ -62,6 +63,11 @@ type Permission struct {
 func (Permission) TableName() string {
 	return "Permissions"
 }
+
+
+
+
+
 
 // RolePermission ارتباط نقش و مجوز.
 type RolePermission struct {
