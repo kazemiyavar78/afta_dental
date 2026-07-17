@@ -4,7 +4,14 @@ import (
 	"time"
 
 	"github.com/tpdenta/afta-reception/internal/platform/security/encryption"
-	
+)
+
+type UserType string
+
+const (
+	UserTypeUser      UserType = "User"
+	UserTypeDoctor    UserType = "Doctor"
+	UserTypeAssistant UserType = "Assistant"
 )
 
 // User مدل جدول کاربران (PersonnelAccount).
@@ -17,6 +24,7 @@ type User struct {
 	Family            string     `gorm:"column:Family;size:100;not null"`
 	PhoneNumber       string     `gorm:"column:PhoneNumber;size:20"`
 	MedicalCode       *string    `gorm:"column:MedicalCode;size:50"`
+	UserType          UserType   `gorm:"column:UserType;size:50;not null;default:User"`
 	RoleID            int        `gorm:"column:RoleID;not null"`
 	IsActive          bool       `gorm:"column:IsActive;not null;default:1"`
 	IsLocked          bool       `gorm:"column:IsLocked;not null;default:0"`
@@ -63,11 +71,6 @@ type Permission struct {
 func (Permission) TableName() string {
 	return "Permissions"
 }
-
-
-
-
-
 
 // RolePermission ارتباط نقش و مجوز.
 type RolePermission struct {

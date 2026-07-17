@@ -15,6 +15,7 @@ type CreateRequest struct {
 	ServiceFeatures         string  `json:"service_features"`
 	IsActive                bool    `json:"is_active"`
 	IsDentalDirection       bool    `json:"is_dental_direction"`
+	HasTooth                bool    `json:"has_tooth"`
 	AllowMultipleUse        bool    `json:"allow_multiple_use"`
 }
 
@@ -33,6 +34,7 @@ type UpdateRequest struct {
 	ServiceFeatures         string  `json:"service_features"`
 	IsActive                bool    `json:"is_active"`
 	IsDentalDirection       bool    `json:"is_dental_direction"`
+	HasTooth                bool    `json:"has_tooth"`
 	AllowMultipleUse        bool    `json:"allow_multiple_use"`
 }
 
@@ -52,5 +54,6 @@ type Response struct {
 	ServiceFeatures         string  `json:"service_features"`
 	IsActive                bool    `json:"is_active"`
 	IsDentalDirection       bool    `json:"is_dental_direction"`
+	HasTooth                bool    `json:"has_tooth"`
 	AllowMultipleUse        bool    `json:"allow_multiple_use"`
 }

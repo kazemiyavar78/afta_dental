@@ -1,13 +1,24 @@
-// این ماژول نمونه است؛ باقی Entity ها و Endpoint ها طبق همین الگو در فازهای بعدی تکمیل می‌شوند.
 package reception
 
-import "gorm.io/gorm"
+import (
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
 
-// Repository اینترفیس CRUD خام پذیرش.
+// Repository اینترفیس دسترسی داده پذیرش.
 type Repository interface {
 	Create(r *Reception) error
-	FindByID(id int) (*Reception, error)
+	Update(r *Reception) error
+	Delete(id uint) error
+	Restore(id uint) error
+	FindByID(id uint) (*Reception, error)
+	FindByIDUnscoped(id uint) (*Reception, error)
 	FindAll() ([]Reception, error)
+	FindFirst() (*Reception, error)
+	FindLast() (*Reception, error)
+	FindPrev(cursor uint) (*Reception, error)
+	FindNext(cursor uint) (*Reception, error)
+	ReplaceServices(receptionID uint, services []ReceptionService) error
 }
 
 type gormRepository struct {
@@ -19,21 +30,108 @@ func NewRepository(db *gorm.DB) Repository {
 	return &gormRepository{db: db}
 }
 
+// Create پذیرش جدید را ذخیره می‌کند.
 func (r *gormRepository) Create(rec *Reception) error {
 	return r.db.Create(rec).Error
 }
 
-func (r *gormRepository) FindByID(id int) (*Reception, error) {
+// Update پذیرش را به‌روزرسانی می‌کند.
+func (r *gormRepository) Update(rec *Reception) error {
+	return r.db.Session(&gorm.Session{FullSaveAssociations: false}).Save(rec).Error
+}
+
+// Delete پذیرش را به‌صورت soft-delete حذف می‌کند.
+func (r *gormRepository) Delete(id uint) error {
+	return r.db.Delete(&Reception{}, id).Error
+}
+
+// Restore پذیرش حذف‌شده را بازیابی می‌کند.
+func (r *gormRepository) Restore(id uint) error {
+	return r.db.Unscoped().Model(&Reception{}).Where("ID = ?", id).Update("deleted_at", nil).Error
+}
+
+// FindByID پذیرش را با خدمات برمی‌گرداند.
+func (r *gormRepository) FindByID(id uint) (*Reception, error) {
 	var rec Reception
-	err := r.db.Where("ID = ?", id).First(&rec).Error
+	err := r.db.Preload("Services").Where("ID = ?", id).First(&rec).Error
 	if err != nil {
 		return nil, err
 	}
 	return &rec, nil
 }
 
+// FindByIDUnscoped پذیرش را حتی در صورت حذف‌شده بودن برمی‌گرداند.
+func (r *gormRepository) FindByIDUnscoped(id uint) (*Reception, error) {
+	var rec Reception
+	err := r.db.Unscoped().Preload("Services").Where("ID = ?", id).First(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// FindAll لیست پذیرش‌های غیرحذف‌شده را برمی‌گرداند.
 func (r *gormRepository) FindAll() ([]Reception, error) {
 	var list []Reception
-	err := r.db.Order("ID DESC").Find(&list).Error
+	err := r.db.Preload("Services").Order("ID DESC").Find(&list).Error
 	return list, err
+}
+
+// FindFirst قدیمی‌ترین پذیرش غیرحذف‌شده را برمی‌گرداند.
+// از Take به‌جای First استفاده می‌شود تا در MSSQL ستون ID در ORDER BY تکراری نشود
+// (First به‌صورت خودکار primary key را هم به ORDER BY اضافه می‌کند).
+func (r *gormRepository) FindFirst() (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").Order("ID ASC").Take(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// FindLast جدیدترین پذیرش غیرحذف‌شده را برمی‌گرداند.
+func (r *gormRepository) FindLast() (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").Order("ID DESC").Take(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// FindPrev پذیرش قبلی نسبت به cursor را برمی‌گرداند.
+func (r *gormRepository) FindPrev(cursor uint) (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").Where("ID < ?", cursor).Order("ID DESC").Take(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// FindNext پذیرش بعدی نسبت به cursor را برمی‌گرداند.
+func (r *gormRepository) FindNext(cursor uint) (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").Where("ID > ?", cursor).Order("ID ASC").Take(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// ReplaceServices خدمات پذیرش را جایگزین می‌کند (حذف نرم قبلی + درج جدید).
+func (r *gormRepository) ReplaceServices(receptionID uint, services []ReceptionService) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("ReceptionID = ?", receptionID).Delete(&ReceptionService{}).Error; err != nil {
+			return err
+		}
+		if len(services) == 0 {
+			return nil
+		}
+		for i := range services {
+			services[i].ID = 0
+			services[i].ReceptionID = receptionID
+		}
+		return tx.Omit(clause.Associations).Create(&services).Error
+	})
 }

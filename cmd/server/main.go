@@ -67,7 +67,11 @@ func main() {
 	// }); err != nil {
 	// 	log.Fatalf("خطا در حذف جدول organization_packages: %v", err)
 	// }
-
+	migrate.DropTable(database, []interface{}{
+		&reception.Reception{},
+		&reception.ReceptionService{},
+	})
+	
 	migrate.Migrate(database, []interface{}{
 		&user.User{},
 		&organizationpackage.OrganizationPackage{},
@@ -78,6 +82,7 @@ func main() {
 		&fund.Fund{},
 		&tariff.Tariff{},
 		&reception.Reception{},
+		&reception.ReceptionService{},
 		&settings.SecuritySetting{},
 		&session.Session{},
 		&audit.SecurityEvent{},
@@ -86,6 +91,8 @@ func main() {
 		&user.RolePermission{},
 		&loginguard.LoginAttempt{},
 	})
+
+	
 
 	// لایه امنیتی
 	signer := integrity.NewSigner(cfg.IntegrityHMACKey)
@@ -150,33 +157,36 @@ func main() {
 	userHandler := user.NewHandler(userSvc, sessionSvc, cfg.CSRFHMACKey, cfg.SecureCookies)
 	user.RegisterRoutes(api, userHandler)
 
-	receptionHandler := reception.NewHandler(reception.NewService(database, auditMgr))
-	reception.RegisterRoutes(api, receptionHandler)
-
 	orgEncryptSvc := encryption.NewOrganizationEncryptionService(encryptor)
 	pkgEncryptSvc := encryption.NewOrganizationPackageEncryptionService(encryptor)
 	orgPackageSvc := organizationpackage.NewService(database, auditMgr, pkgEncryptSvc)
 	orgPackageHandler := organizationpackage.NewHandler(orgPackageSvc)
 	organizationpackage.RegisterRoutes(api, orgPackageHandler)
 
-	orgHandler := organization.NewHandler(organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc))
+	orgSvc := organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc)
+	orgHandler := organization.NewHandler(orgSvc)
 	organization.RegisterRoutes(api, orgHandler)
 
 	patientEncryptSvc := encryption.NewPatientEncryptionService(encryptor)
-	patientHandler := patient.NewHandler(patient.NewService(database, auditMgr, patientEncryptSvc))
+	patientSvc := patient.NewService(database, auditMgr, patientEncryptSvc)
+	patientHandler := patient.NewHandler(patientSvc)
 	patient.RegisterRoutes(api, patientHandler)
 
 	svcEncryptSvc := encryption.NewServiceEncryptionService(encryptor)
-	servicesHandler := services.NewHandler(services.NewService(database, auditMgr, svcEncryptSvc))
+	servicesSvc := services.NewService(database, auditMgr, svcEncryptSvc)
+	servicesHandler := services.NewHandler(servicesSvc)
 	services.RegisterRoutes(api, servicesHandler)
 
 	fundHandler := fund.NewHandler(fund.NewService(database, auditMgr))
 	fund.RegisterRoutes(api, fundHandler)
 
-	tariffHandler := tariff.NewHandler(tariff.NewService(database, auditMgr,
-		organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc),
-		services.NewService(database, auditMgr, svcEncryptSvc)))
+	tariffSvc := tariff.NewService(database, auditMgr, orgSvc, servicesSvc)
+	tariffHandler := tariff.NewHandler(tariffSvc)
 	tariff.RegisterRoutes(api, tariffHandler)
+
+	receptionSvc := reception.NewService(database, auditMgr, patientSvc, orgSvc, servicesSvc, tariffSvc, userSvc)
+	receptionHandler := reception.NewHandler(receptionSvc)
+	reception.RegisterRoutes(api, receptionHandler)
 
 	logsHandler := logs.NewHandler(auditMgr.Repository())
 	logs.RegisterRoutes(api, logsHandler)

@@ -21,6 +21,7 @@ type UpdateUserRequest struct {
 	MedicalCode *string `json:"medical_code"`
 	RoleID      *int    `json:"role_id"`
 	IsActive    *bool   `json:"is_active"`
+	UserType    *UserType `json:"user_type"`
 }
 
 // LoginRequest درخواست ورود.
@@ -46,6 +47,7 @@ type UserResponse struct {
 	MedicalCode *string `json:"medical_code"`
 	RoleID      int     `json:"role_id"`
 	RoleName    string  `json:"role_name"`
+	UserType    UserType `json:"user_type"`
 	IsActive    bool    `json:"is_active"`
 	IsLocked    bool    `json:"is_locked"`
 	LastLoginAt *string `json:"last_login_at"`

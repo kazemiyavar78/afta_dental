@@ -9,8 +9,8 @@ import type {
 
 /** دریافت لیست سازمان‌ها */
 export async function fetchOrganizations(): Promise<Organization[]> {
-  const { data } = await httpClient.get<Organization[]>('/organization');
-  return data;
+  const { data } = await httpClient.get<Organization[] | null>('/organization');
+  return data ?? [];
 }
 
 /** دریافت یک سازمان */

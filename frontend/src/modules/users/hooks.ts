@@ -6,6 +6,12 @@ const MIN_PASSWORD_LENGTH = 8;
 /** الگوی شماره تلفن ایرانی */
 const iranianPhoneRegex = /^09\d{9}$/;
 
+export const userTypeOptions = [
+  { value: 'User', label: 'کاربر' },
+  { value: 'Doctor', label: 'پزشک' },
+  { value: 'Assistant', label: 'کمک' },
+];
+
 /** اسکیمای ایجاد کاربر */
 export const createUserSchema = z.object({
   username: z.string().min(3, 'نام کاربری حداقل ۳ کاراکتر'),
@@ -15,6 +21,7 @@ export const createUserSchema = z.object({
   address: z.string(),
   name: z.string().min(1, 'نام الزامی است'),
   family: z.string().min(1, 'نام خانوادگی الزامی است'),
+  user_type: z.enum(userTypeOptions.map((option) => option.value)),
   phone_number: z
     .string()
     .regex(iranianPhoneRegex, 'شماره تلفن باید ۱۱ رقم و با ۰۹ شروع شود')

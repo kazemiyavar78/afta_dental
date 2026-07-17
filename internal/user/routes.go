@@ -31,6 +31,8 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 		// مدیریت کاربران
 		auth.POST("/users", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.CreateUser)
 		auth.GET("/users", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.ListUsers)
+		auth.GET("/users/doctors", middleware.RequireRole("Admin", "Reception", "Doctor"), middleware.AuthorizationMiddleware(), h.ListDoctors)
+		auth.GET("/users/assistants", middleware.RequireRole("Admin", "Reception", "Doctor"), middleware.AuthorizationMiddleware(), h.ListAssistants)
 		auth.GET("/users/:id", h.GetUser)
 		auth.PUT("/users/:id", h.UpdateUser)
 

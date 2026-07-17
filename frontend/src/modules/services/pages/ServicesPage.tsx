@@ -50,6 +50,7 @@ const emptyFormValues: ServiceFormValues = {
   service_features: '',
   is_active: true,
   is_dental_direction: false,
+  has_tooth: false,
   allow_multiple_use: false,
 };
 
@@ -91,6 +92,7 @@ export function ServicesPage() {
         service_features: editing.service_features,
         is_active: editing.is_active,
         is_dental_direction: editing.is_dental_direction,
+        has_tooth: editing.has_tooth,
         allow_multiple_use: editing.allow_multiple_use,
       });
     } else {
@@ -370,6 +372,13 @@ export function ServicesPage() {
           <Form.Item label="جهت دندان دارد">
             <Controller
               name="is_dental_direction"
+              control={control}
+              render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
+            />
+          </Form.Item>
+          <Form.Item label="شماره دندان دارد">
+            <Controller
+              name="has_tooth"
               control={control}
               render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
             />

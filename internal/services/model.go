@@ -31,7 +31,9 @@ type ServiceItem struct {
 	ServiceFeatures string `gorm:"column:ServiceFeatures;size:5;not null;default:''"`
 	// شماره جهت دندان دارد ؟
 	HasDentalDirection bool `gorm:"column:HasDentalDirection;not null;default:false"`
-	//اجازه استفاده بیش از یکبار در پرونده 
+	// نیاز به انتخاب شماره دندان دارد؟
+	HasTooth bool `gorm:"column:HasTooth;not null;default:false"`
+	// اجازه استفاده بیش از یکبار در پرونده
 	AllowMultipleUse bool `gorm:"column:AllowMultipleUse;not null;default:false"`
 	IsActive        bool   `gorm:"column:IsActive;default:true"`
 	IntegrityHash   string `gorm:"column:IntegrityHash;size:128;not null"`
@@ -46,6 +48,7 @@ type Repository interface {
 	Update(item *ServiceItem) error
 	Delete(item *ServiceItem) error
 	FindByID(id uint) (*ServiceItem, error)
+	FindByServiceCode(code string) (*ServiceItem, error)
 	FindAll() ([]ServiceItem, error)
 	FindByExcludeServices(excludeServices []uint) ([]ServiceItem, error)
 }
@@ -62,6 +65,13 @@ func (r *gormRepo) Create(item *ServiceItem) error { return r.db.Create(item).Er
 func (r *gormRepo) FindByID(id uint) (*ServiceItem, error) {
 	var item ServiceItem
 	err := r.db.Where("ID = ?", id).First(&item).Error
+	return &item, err
+}
+
+// FindByServiceCode خدمت را با کد خدمت برمی‌گرداند.
+func (r *gormRepo) FindByServiceCode(code string) (*ServiceItem, error) {
+	var item ServiceItem
+	err := r.db.Where("ServiceCode = ?", code).First(&item).Error
 	return &item, err
 }
 

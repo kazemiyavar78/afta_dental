@@ -62,6 +62,9 @@ func toResponse(item *ServiceItem) *Response {
 		MaximumCount:            item.MaximumCount,
 		ServiceFeatures:         item.ServiceFeatures,
 		IsActive:                item.IsActive,
+		IsDentalDirection:       item.HasDentalDirection,
+		HasTooth:                item.HasTooth,
+		AllowMultipleUse:        item.AllowMultipleUse,
 	}
 }
 
@@ -84,8 +87,8 @@ func (s *Service) verifyIntegrity(item *ServiceItem, actorID int, ip string) err
 }
 
 // applyRequest فیلدهای درخواست را روی مدل خدمت اعمال می‌کند.
-func applyRequest(item *ServiceItem, code, name, intlCode, 
-	features string, tech, prof, cons float64, rate ,tariff int, defCount, maxCount int, isActive bool, hasDentalDirection bool, allowMultipleUse bool) {
+func applyRequest(item *ServiceItem, code, name, intlCode,
+	features string, tech, prof, cons float64, rate, tariff int, defCount, maxCount int, isActive bool, hasDentalDirection, hasTooth, allowMultipleUse bool) {
 	item.ServiceCode = code
 	item.Name = name
 	item.TechnicalCoefficient = tech
@@ -99,6 +102,7 @@ func applyRequest(item *ServiceItem, code, name, intlCode,
 	item.ServiceFeatures = features
 	item.IsActive = isActive
 	item.HasDentalDirection = hasDentalDirection
+	item.HasTooth = hasTooth
 	item.AllowMultipleUse = allowMultipleUse
 }
 
@@ -111,7 +115,7 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	item := &ServiceItem{}
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.AllowMultipleUse)
+		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {
@@ -161,6 +165,18 @@ func (s *Service) FindByExcludeServices(excludeServices []uint) ([]ServiceItem, 
 	return list, nil
 }
 
+// FindItemByCode مدل دامنه خدمت را با کد خدمت برمی‌گرداند.
+func (s *Service) FindItemByCode(code string) (*ServiceItem, error) {
+	item, err := s.repo.FindByServiceCode(code)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمت.", err.Error(), 500)
+	}
+	return item, nil
+}
+
 // FindItemByID مدل دامنه خدمت را با شناسه برمی‌گرداند (برای محاسبات داخلی مثل تعرفه).
 func (s *Service) FindItemByID(id uint) (*ServiceItem, error) {
 	item, err := s.repo.FindByID(id)
@@ -193,7 +209,7 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.AllowMultipleUse)
+		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {

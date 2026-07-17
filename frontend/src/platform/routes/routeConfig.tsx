@@ -3,8 +3,7 @@ import { LoginPage } from '@/modules/auth/pages/LoginPage';
 import { UserListPage } from '@/modules/users/pages/UserListPage';
 import { UserFormPage } from '@/modules/users/pages/UserFormPage';
 import { ListSessions } from '@/modules/users/pages/ListSessions';
-import { ReceptionListPage } from '@/modules/reception/pages/ReceptionListPage';
-import { ReceptionFormPage } from '@/modules/reception/pages/ReceptionFormPage';
+import { ReceptionWorkspacePage } from '@/modules/reception/pages/ReceptionWorkspacePage';
 import { OrganizationListPage } from '@/modules/organization/pages/OrganizationListPage';
 import { OrganizationFormPage } from '@/modules/organization/pages/OrganizationFormPage';
 import { OrganizationPackagesPage } from '@/modules/organization-packages/pages/OrganizationPackagesPage';
@@ -42,8 +41,8 @@ export const routeConfig: AppRoute[] = [
 
   { path: '/roles', element: <RolesPage />, requiredPermission: 'roles.read' },
 
-  { path: '/reception', element: <ReceptionListPage />, requiredPermission: 'reception.read' },
-  { path: '/reception/new', element: <ReceptionFormPage />, requiredPermission: 'reception.create' },
+  { path: '/reception', element: <ReceptionWorkspacePage />, requiredPermission: 'reception.read' },
+  { path: '/reception/new', element: <ReceptionWorkspacePage />, requiredPermission: 'reception.create' },
 
   { path: '/patients', element: <PatientsPage />, requiredPermission: 'patient.read' },
 

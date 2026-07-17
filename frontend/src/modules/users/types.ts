@@ -7,6 +7,7 @@ export type User = {
   phone_number: string;
   medical_code: string | null;
   role_id: number;
+  user_type: string;
   role_name: string;
   is_active: boolean;
   is_locked: boolean;
@@ -33,6 +34,7 @@ export type CreateUserPayload = {
   address?: string;
   name: string;
   family: string;
+  user_type :string;
   phone_number?: string;
   medical_code?: string | null;
   role_id: number;
@@ -43,6 +45,7 @@ export type UpdateUserPayload = {
   name?: string;
   family?: string;
   phone_number?: string;
+  user_type?: string;
   medical_code?: string | null;
   role_id?: number;
   is_active?: boolean;
@@ -55,6 +58,7 @@ export type UserFormValues = {
   name: string;
   family: string;
   phone_number: string;
+  user_type: string;
   medical_code: string;
   role_id: number;
   is_active?: boolean;

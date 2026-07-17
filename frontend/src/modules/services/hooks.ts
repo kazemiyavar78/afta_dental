@@ -15,6 +15,7 @@ export const serviceSchema = z.object({
   service_features: z.enum(['', '#', '*', '#*']),
   is_active: z.boolean(),
   is_dental_direction: z.boolean(),
+  has_tooth: z.boolean(),
   allow_multiple_use: z.boolean(),
 });
 

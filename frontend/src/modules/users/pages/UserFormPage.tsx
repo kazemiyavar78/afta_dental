@@ -11,6 +11,7 @@ import {
   updateUserSchema,
   type CreateUserFormValues,
   type UpdateUserFormValues,
+  userTypeOptions,
 } from '../hooks';
 import { createUser, fetchRoles, fetchUser, updateUser } from '../api';
 
@@ -40,6 +41,8 @@ export function UserFormPage() {
       address: '',
       name: '',
       family: '',
+      user_type: '',
+
       phone_number: '',
       medical_code: '',
       role_id: 0,
@@ -52,6 +55,7 @@ export function UserFormPage() {
       address: '',
       name: '',
       family: '',
+      user_type: 'User',
       phone_number: '',
       medical_code: '',
       role_id: 0,
@@ -65,6 +69,7 @@ export function UserFormPage() {
         address: existingUser.address,
         name: existingUser.name,
         family: existingUser.family,
+        user_type: existingUser.user_type,
         phone_number: existingUser.phone_number,
         medical_code: existingUser.medical_code ?? '',
         role_id: existingUser.role_id,
@@ -109,6 +114,7 @@ export function UserFormPage() {
             name: v.name,
             family: v.family,
             address: v.address,
+            user_type: v.user_type,
             phone_number: v.phone_number,
             medical_code: v.medical_code || null,
             role_id: v.role_id,
@@ -133,6 +139,11 @@ export function UserFormPage() {
             </Form.Item>
             <Form.Item label="کد نظام پزشکی">
               <Controller name="medical_code" control={control} render={({ field }) => <Input {...field} />} />
+            </Form.Item>
+            <Form.Item label="نوع کاربر" validateStatus={errors.user_type ? 'error' : ''} help={errors.user_type?.message}>
+              <Controller name="user_type" control={control} render={({ field }) => (
+                <Select {...field} options={userTypeOptions} />
+              )} />
             </Form.Item>
             <Form.Item label="نقش" validateStatus={errors.role_id ? 'error' : ''} help={errors.role_id?.message}>
               <Controller name="role_id" control={control} render={({ field }) => (
@@ -173,6 +184,11 @@ export function UserFormPage() {
           <Form.Item label="نقش" validateStatus={errors.role_id ? 'error' : ''} help={errors.role_id?.message}>
             <Controller name="role_id" control={control} render={({ field }) => (
               <Select {...field} options={roleOptions} />
+            )} />
+          </Form.Item>
+          <Form.Item label="نوع کاربر" validateStatus={errors.user_type ? 'error' : ''} help={errors.user_type?.message}>
+            <Controller name="user_type" control={control} render={({ field }) => (
+              <Select {...field} options={userTypeOptions} />
             )} />
           </Form.Item>
           <Form.Item label="فعال">

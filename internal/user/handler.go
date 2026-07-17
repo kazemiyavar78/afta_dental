@@ -127,6 +127,26 @@ func (h *Handler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
+// ListDoctors لیست پزشکان فعال را برمی‌گرداند.
+func (h *Handler) ListDoctors(c *gin.Context) {
+	users, err := h.service.ListDoctors()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, users)
+}
+
+// ListAssistants لیست دستیاران را برمی‌گرداند.
+func (h *Handler) ListAssistants(c *gin.Context) {
+	users, err := h.service.ListAssistants()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, users)
+}
+
 // UpdateUser به‌روزرسانی کاربر.
 func (h *Handler) UpdateUser(c *gin.Context) {
 	var uri struct {

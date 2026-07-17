@@ -229,6 +229,18 @@ func (s *Service) ListByOrganizationID(organizationID uint) ([]TariffResponse, e
 	return result, nil
 }
 
+// GetByOrganizationAndService تعرفه ذخیره‌شده یک خدمت برای سازمان را برمی‌گرداند.
+func (s *Service) GetByOrganizationAndService(organizationID, serviceID uint) (*Tariff, error) {
+	t, err := s.repo.FindByOrganizationIDAndServiceID(organizationID, serviceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperror.New("E-005", "خدمت بدون تعرفه است.", "tariff not found for service", 400)
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن تعرفه.", err.Error(), 500)
+	}
+	return t, nil
+}
+
 // RecalculateTariff یک تعرفه خاص را با سه مبلغ مرکز دوباره محاسبه و در صورت معتبر بودن صندوق ذخیره می‌کند.
 func (s *Service) RecalculateTariff(id uint, req RecalculateTariffRequest, actorID int, ip string) (*TariffResponse, error) {
 	existing, err := s.repo.FindByID(id)

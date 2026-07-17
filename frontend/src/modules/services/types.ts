@@ -15,6 +15,7 @@ export type ServiceItem = {
   service_features: ServiceFeatures;
   is_active: boolean;
   is_dental_direction: boolean;
+  has_tooth: boolean;
   allow_multiple_use: boolean;
 };
 
@@ -32,5 +33,6 @@ export type ServicePayload = {
   service_features: ServiceFeatures;
   is_active: boolean;
   is_dental_direction: boolean;
+  has_tooth: boolean;
   allow_multiple_use: boolean;
 };

@@ -76,6 +76,7 @@ func (s *Service) CreateUser(req CreateUserRequest, actorUserID int, ip string) 
 		PhoneNumber:       req.PhoneNumber,
 		MedicalCode:       req.MedicalCode,
 		RoleID:            req.RoleID,
+		UserType:          UserTypeUser,
 		IsActive:          true,
 		IsLocked:          false,
 		PasswordChangedAt: now,
@@ -234,6 +235,32 @@ func (s *Service) ListUsers(actorRole string) ([]UserResponse, error) {
 	return result, nil
 }
 
+// ListDoctors لیست دکتران
+func (s *Service) ListDoctors() ([]UserResponse, error) {
+	users, err := s.repo.FindDoctors()
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن دکتران.", err.Error(), 500)
+	}
+	result := make([]UserResponse, 0, len(users))
+	for _, u := range users {
+		result = append(result, *s.toResponse(&u))
+	}
+	return result, nil
+}
+
+// ListAssistants لیست دستیاران
+func (s *Service) ListAssistants() ([]UserResponse, error) {
+	users, err := s.repo.FindAssistants()
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن دستیاران.", err.Error(), 500)
+	}
+	result := make([]UserResponse, 0, len(users))
+	for _, u := range users {
+		result = append(result, *s.toResponse(&u))
+	}
+	return result, nil
+}
+
 // UpdateUser کاربر را به‌روزرسانی می‌کند.
 func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, actorRole, ip string) (*UserResponse, error) {
 	if actorRole != "Admin" && actorUserID != id {
@@ -263,6 +290,10 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, act
 	if req.MedicalCode != nil {
 		user.MedicalCode = req.MedicalCode
 	}
+	if req.UserType != nil {
+		
+		user.UserType = UserType(*req.UserType)
+	}
 	if req.RoleID != nil {
 		if actorRole != "Admin" {
 			return nil, apperror.ErrForbidden
@@ -284,6 +315,8 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, act
 	}
 	user.SecurityCode = securityCode
 	user.IntegrityHash = SignUserIntegrityHash(s.signer, user)
+
+	fmt.Println("user.UserType", user.UserType)
 
 	if err := s.repo.Update(user); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در به‌روزرسانی کاربر.", err.Error(), 500)

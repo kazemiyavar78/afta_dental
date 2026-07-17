@@ -18,6 +18,8 @@ type Repository interface {
 	Delete(id int) error
 	FindAll() ([]User, error)
 	CountUsersByRoleID(roleID int) (int64, error)
+	FindDoctors() ([]User, error)
+	FindAssistants() ([]User, error)
 
 	// role
 	CreateRole(role *Role) error
@@ -92,6 +94,18 @@ func (r *gormRepository) CountUsersByRoleID(roleID int) (int64, error) {
 	var count int64
 	err := r.db.Model(&User{}).Where("RoleID = ?", roleID).Count(&count).Error
 	return count, err
+}
+
+func (r *gormRepository) FindDoctors() ([]User, error) {
+	var users []User
+	err := r.db.Where("UserType = ?", UserTypeDoctor).Find(&users).Error
+	return users, err
+}
+
+func (r *gormRepository) FindAssistants() ([]User, error) {
+	var users []User
+	err := r.db.Where("UserType = ?", UserTypeAssistant).Find(&users).Error
+	return users, err
 }
 
 // CreateRole نقش جدید را ذخیره می‌کند.

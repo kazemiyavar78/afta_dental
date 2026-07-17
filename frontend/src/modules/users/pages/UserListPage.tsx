@@ -23,6 +23,7 @@ export function UserListPage() {
     { title: 'نام خانوادگی', dataIndex: 'family', key: 'family' },
     { title: 'تلفن', dataIndex: 'phone_number', key: 'phone_number' },
     { title: 'نقش', dataIndex: 'role_name', key: 'role_name' },
+    { title: 'نوع کاربر', dataIndex: 'user_type', key: 'user_type' },
     {
       title: 'وضعیت',
       key: 'status',

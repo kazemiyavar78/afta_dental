@@ -128,6 +128,30 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	return toResponse(created), nil
 }
 
+// GetByNationalCode بیمار را با کد ملی دقیق برمی‌گرداند.
+func (s *Service) GetByNationalCode(nationalCode string) (*Response, error) {
+	p, err := s.repo.FindByNationalCode(nationalCode)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن بیمار.", err.Error(), 500)
+	}
+	return toResponse(p), nil
+}
+
+// GetByFileNumber بیمار را با شماره پرونده دقیق برمی‌گرداند.
+func (s *Service) GetByFileNumber(fileNumber string) (*Response, error) {
+	p, err := s.repo.FindByFileNumber(fileNumber)
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن بیمار.", err.Error(), 500)
+	}
+	return toResponse(p), nil
+}
+
 // Get بیمار را با شناسه برمی‌گرداند.
 func (s *Service) Get(id uint) (*Response, error) {
 	p, err := s.repo.FindByID(id)
