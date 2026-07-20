@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/tpdenta/afta-reception/internal/cardreader"
 	"github.com/tpdenta/afta-reception/internal/fund"
 	"github.com/tpdenta/afta-reception/internal/logs"
 	"github.com/tpdenta/afta-reception/internal/organization"
@@ -30,9 +31,12 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
 	"github.com/tpdenta/afta-reception/internal/reception"
+	"github.com/tpdenta/afta-reception/internal/regulation"
 	"github.com/tpdenta/afta-reception/internal/services"
+	"github.com/tpdenta/afta-reception/internal/specialcode"
 	"github.com/tpdenta/afta-reception/internal/tariff"
 	"github.com/tpdenta/afta-reception/internal/user"
+	"github.com/tpdenta/afta-reception/internal/wallet"
 )
 
 func main() {
@@ -67,12 +71,14 @@ func main() {
 	// }); err != nil {
 	// 	log.Fatalf("خطا در حذف جدول organization_packages: %v", err)
 	// }
-	migrate.DropTable(database, []interface{}{
-		&reception.Reception{},
-		&reception.ReceptionService{},
-	})
-	
-	migrate.Migrate(database, []interface{}{
+	// migrate.DropTable(database, []interface{}{
+	// 	&wallet.CashFund{},
+	// 	&wallet.PatientWallet{},
+	// 	&wallet.BankAccount{},
+	// 	&wallet.Transaction{},
+	// })
+
+	if err := migrate.Migrate(database, []interface{}{
 		&user.User{},
 		&organizationpackage.OrganizationPackage{},
 		&organizationpackage.OrganizationPackageRelation{},
@@ -83,6 +89,14 @@ func main() {
 		&tariff.Tariff{},
 		&reception.Reception{},
 		&reception.ReceptionService{},
+		&reception.ReceptionPhoto{},
+		&specialcode.SpecialCode{},
+		&regulation.Regulation{},
+		&regulation.RegulationService{},
+		&wallet.CashFund{},
+		&wallet.PatientWallet{},
+		&wallet.BankAccount{},
+		&wallet.Transaction{},
 		&settings.SecuritySetting{},
 		&session.Session{},
 		&audit.SecurityEvent{},
@@ -90,9 +104,9 @@ func main() {
 		&user.Permission{},
 		&user.RolePermission{},
 		&loginguard.LoginAttempt{},
-	})
-
-	
+	}); err != nil {
+		log.Printf("هشدار: برخی جداول migrate نشدند: %v", err)
+	}
 
 	// لایه امنیتی
 	signer := integrity.NewSigner(cfg.IntegrityHMACKey)
@@ -145,6 +159,7 @@ func main() {
 	api.Use(middleware.LoginRateLimiterMiddleware(loginGuard))
 	api.Use(middleware.SessionMiddleware(sessionSvc, cfg.SecureCookies))
 	api.Use(middleware.SetRoleMiddleware(userSvc.GetRoleName))
+	api.Use(middleware.SetPermissionsMiddleware(userSvc.GetAuthPermissions))
 	api.Use(middleware.CSRFMiddleware(cfg.CSRFHMACKey, auditMgr))
 	api.Use(middleware.SecurityCheckMiddleware(userSvc, sessionSvc, auditMgr))
 	api.Use(middleware.AuthorizationMiddleware())
@@ -180,11 +195,26 @@ func main() {
 	fundHandler := fund.NewHandler(fund.NewService(database, auditMgr))
 	fund.RegisterRoutes(api, fundHandler)
 
+	walletSvc := wallet.NewService(database, auditMgr, signer)
+	walletHandler := wallet.NewHandler(walletSvc)
+	wallet.RegisterRoutes(api, walletHandler)
+
+	cardReaderHandler := cardreader.NewHandler(cardreader.NewService())
+	cardreader.RegisterRoutes(api, cardReaderHandler)
+
 	tariffSvc := tariff.NewService(database, auditMgr, orgSvc, servicesSvc)
 	tariffHandler := tariff.NewHandler(tariffSvc)
 	tariff.RegisterRoutes(api, tariffHandler)
 
-	receptionSvc := reception.NewService(database, auditMgr, patientSvc, orgSvc, servicesSvc, tariffSvc, userSvc)
+	specialCodeSvc := specialcode.NewService(database, auditMgr, signer)
+	specialCodeHandler := specialcode.NewHandler(specialCodeSvc)
+	specialcode.RegisterRoutes(api, specialCodeHandler)
+
+	regulationSvc := regulation.NewService(database, auditMgr)
+	regulationHandler := regulation.NewHandler(regulationSvc)
+	regulation.RegisterRoutes(api, regulationHandler)
+
+	receptionSvc := reception.NewService(database, auditMgr, patientSvc, orgSvc, servicesSvc, tariffSvc, userSvc, walletSvc, specialCodeSvc, regulationSvc)
 	receptionHandler := reception.NewHandler(receptionSvc)
 	reception.RegisterRoutes(api, receptionHandler)
 

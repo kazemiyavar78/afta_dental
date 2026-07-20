@@ -21,7 +21,7 @@ type ActionButtonsProps = {
   onRestore?: () => void;
 };
 
-/** دکمه‌های عملیاتی پذیرش بر اساس مجوز کاربر */
+/** دکمه‌های عملیاتی پذیرش — اندازه یکسان و فشرده */
 export function ActionButtons({
   saving,
   canEdit,
@@ -42,16 +42,16 @@ export function ActionButtons({
       (!isNew && (hasPermission('reception.update') || hasPermission('reception.create'))));
 
   return (
-    <Space wrap>
+    <Space.Compact>
       {canSave && (
-        <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={onSave}>
+        <Button type="primary" size="small" icon={<SaveOutlined />} loading={saving} onClick={onSave}>
           ذخیره
         </Button>
       )}
 
       {!isNew && !deleted && (
         <PermissionGuard permission="reception.update">
-          <Button icon={<EditOutlined />} onClick={onEdit}>
+          <Button size="small" icon={<EditOutlined />} onClick={onEdit}>
             ویرایش
           </Button>
         </PermissionGuard>
@@ -60,7 +60,7 @@ export function ActionButtons({
       {!isNew && !deleted && (
         <PermissionGuard permission="reception.delete">
           <Popconfirm title="حذف نرم این پذیرش؟" onConfirm={onDelete}>
-            <Button danger icon={<DeleteOutlined />}>
+            <Button size="small" danger icon={<DeleteOutlined />}>
               حذف
             </Button>
           </Popconfirm>
@@ -69,7 +69,7 @@ export function ActionButtons({
 
       {deleted && (
         <PermissionGuard permission="reception.restore">
-          <Button icon={<RollbackOutlined />} onClick={onRestore}>
+          <Button size="small" icon={<RollbackOutlined />} onClick={onRestore}>
             بازیابی
           </Button>
         </PermissionGuard>
@@ -77,6 +77,7 @@ export function ActionButtons({
 
       <PermissionGuard permission="reception.read">
         <Button
+          size="small"
           icon={<PrinterOutlined />}
           onClick={() => {
             if (!hasPermission('reception.read')) {
@@ -90,7 +91,9 @@ export function ActionButtons({
         </Button>
       </PermissionGuard>
 
-      <Button onClick={() => navigate('/')}>بازگشت</Button>
-    </Space>
+      <Button size="small" onClick={() => navigate('/')}>
+        بازگشت
+      </Button>
+    </Space.Compact>
   );
 }

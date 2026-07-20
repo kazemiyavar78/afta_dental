@@ -9,6 +9,7 @@ import {
   Row,
   Select,
   Space,
+  Switch,
   Tag,
   message,
 } from 'antd';
@@ -19,6 +20,9 @@ import {
   PrinterOutlined,
   SearchOutlined,
   ClearOutlined,
+  DollarOutlined,
+  SwapOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -31,6 +35,9 @@ import { confirmDialog } from '@/platform/components/ConfirmDialog';
 import { JalaliDatePicker } from '@/platform/components/JalaliDatePicker/JalaliDatePicker';
 import { useApiQuery } from '@/platform/hooks/useApiQuery';
 import { useApiMutation } from '@/platform/hooks/useApiMutation';
+import { CashAdjustModal } from '@/modules/wallet/components/CashAdjustModal';
+import { CardToCardAdjustModal } from '@/modules/wallet/components/CardToCardAdjustModal';
+import { PatientWalletLedgerModal } from '@/modules/wallet/components/PatientWalletLedgerModal';
 import {
   createPatient,
   deletePatient,
@@ -56,6 +63,7 @@ const emptyFormValues: PatientFormValues = {
   mobile_phone_number: '',
   file_number: '',
   sex: true,
+  is_foreign_national: false,
 };
 
 const emptySearchValues: PatientSearchFormValues = {
@@ -97,6 +105,9 @@ export function PatientsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Patient | null>(null);
   const [searchParams, setSearchParams] = useState<PatientSearchParams>({});
+  const [cashPatient, setCashPatient] = useState<Patient | null>(null);
+  const [cardToCardPatient, setCardToCardPatient] = useState<Patient | null>(null);
+  const [ledgerPatient, setLedgerPatient] = useState<Patient | null>(null);
 
   const queryKey = useMemo(() => ['patients', searchParams], [searchParams]);
 
@@ -138,6 +149,7 @@ export function PatientsPage() {
         mobile_phone_number: editing.mobile_phone_number ?? '',
         file_number: editing.file_number,
         sex: editing.sex,
+        is_foreign_national: editing.is_foreign_national ?? false,
       });
     } else {
       reset(emptyFormValues);
@@ -216,6 +228,13 @@ export function PatientsPage() {
     { title: 'نام خانوادگی', dataIndex: 'last_name', key: 'last_name', width: 130 },
     { title: 'کد ملی', dataIndex: 'national_code', key: 'national_code', width: 120 },
     {
+      title: 'اتباع',
+      dataIndex: 'is_foreign_national',
+      key: 'is_foreign_national',
+      width: 80,
+      render: (v: boolean) => (v ? <Tag color="orange">اتباع</Tag> : <Tag>ایرانی</Tag>),
+    },
+    {
       title: 'تاریخ تولد',
       dataIndex: 'birth_date',
       key: 'birth_date',
@@ -240,10 +259,25 @@ export function PatientsPage() {
     {
       title: 'عملیات',
       key: 'actions',
-      width: 200,
+      width: 440,
       fixed: 'left',
       render: (_, record) => (
         <>
+          <PermissionGuard permission="wallet.read">
+            <Button type="link" icon={<UnorderedListOutlined />} onClick={() => setLedgerPatient(record)}>
+              پرونده مالی
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="wallet.cash">
+            <Button type="link" icon={<DollarOutlined />} onClick={() => setCashPatient(record)}>
+              نقدی
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="wallet.card_to_card">
+            <Button type="link" icon={<SwapOutlined />} onClick={() => setCardToCardPatient(record)}>
+              کارت به کارت
+            </Button>
+          </PermissionGuard>
           <PermissionGuard permission="patient.update">
             <Button type="link" icon={<EditOutlined />} onClick={() => openEdit(record)}>
               ویرایش
@@ -418,6 +452,17 @@ export function PatientsPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
+              <Form.Item label="اتباع خارجی">
+                <Controller
+                  name="is_foreign_national"
+                  control={control}
+                  render={({ field }) => (
+                    <Switch checked={field.value} onChange={field.onChange} checkedChildren="اتباع" unCheckedChildren="ایرانی" />
+                  )}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
               <Form.Item label="شماره پرونده" validateStatus={errors.file_number ? 'error' : ''} help={errors.file_number?.message}>
                 <Controller name="file_number" control={control} render={({ field }) => <Input {...field} />} />
               </Form.Item>
@@ -479,6 +524,22 @@ export function PatientsPage() {
           </Space>
         </Form>
       </Modal>
+
+      <CashAdjustModal
+        open={!!cashPatient}
+        patient={cashPatient}
+        onClose={() => setCashPatient(null)}
+      />
+      <CardToCardAdjustModal
+        open={!!cardToCardPatient}
+        patient={cardToCardPatient}
+        onClose={() => setCardToCardPatient(null)}
+      />
+      <PatientWalletLedgerModal
+        open={!!ledgerPatient}
+        patient={ledgerPatient}
+        onClose={() => setLedgerPatient(null)}
+      />
     </>
   );
 }

@@ -34,6 +34,8 @@ type Reception struct {
 	InsuranceID *uint `gorm:"column:InsuranceID"`
 	// بیمه تکمیلی
 	AdditionalInsuranceID *uint `gorm:"column:AdditionalInsuranceID"`
+	// کد خاص (سازمان سوم؛ اختیاری — پیش‌فرض صفر/خالی)
+	SpecialCodeID *uint `gorm:"column:SpecialCodeID"`
 	// پزشک (الزامی هنگام ذخیره)
 	DoctorID *uint `gorm:"column:DoctorID"`
 	// دستیار (اختیاری)
@@ -54,10 +56,14 @@ type Reception struct {
 	AdditionalInsuranceCoverage *int64 `gorm:"column:AdditionalInsuranceCoverage"`
 	// درصد بیمه تکمیلی (۰ تا ۱۰۰)
 	AdditionalInsurancePercentage *uint8 `gorm:"column:AdditionalInsurancePercentage"`
+	// پایان پذیرش
+	ReceptionEnded bool `gorm:"column:ReceptionEnded;not null;default:false"`
 	// کاربر ثبت‌کننده
 	RegisteredByID *uint `gorm:"column:RegisteredByID"`
 	// لیست خدمات پذیرش‌شده
 	Services []ReceptionService `gorm:"foreignKey:ReceptionID;references:ID"`
+	// عکس‌های دندان مربوط به ضوابط
+	Photos []ReceptionPhoto `gorm:"foreignKey:ReceptionID;references:ID"`
 }
 
 // TableName نام جدول در دیتابیس.
@@ -96,4 +102,17 @@ type ReceptionService struct {
 // TableName نام جدول در دیتابیس.
 func (ReceptionService) TableName() string {
 	return "ReceptionServices"
+}
+
+// ReceptionPhoto عکس آپلودشده برای ضوابط پایان پذیرش.
+type ReceptionPhoto struct {
+	gorm.Model
+	ReceptionID uint   `gorm:"column:ReceptionID;not null;index"`
+	FilePath    string `gorm:"column:FilePath;size:500;not null"`
+	FileName    string `gorm:"column:FileName;size:255;not null"`
+}
+
+// TableName نام جدول عکس‌های پذیرش.
+func (ReceptionPhoto) TableName() string {
+	return "ReceptionPhotos"
 }

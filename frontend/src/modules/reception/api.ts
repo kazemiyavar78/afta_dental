@@ -3,6 +3,8 @@ import type {
   CalculatePayload,
   CalculatedServiceLine,
   DoctorUser,
+  EndReceptionResult,
+  PatientServiceHistoryItem,
   ReceptionDetail,
   UpsertReceptionPayload,
 } from './types';
@@ -10,6 +12,22 @@ import type {
 /** دریافت لیست پذیرش‌ها */
 export async function fetchReceptions(): Promise<ReceptionDetail[]> {
   const { data } = await httpClient.get<ReceptionDetail[]>('/reception');
+  return data;
+}
+
+/** دریافت پذیرش‌های یک پرونده */
+export async function fetchPatientReceptions(patientId: number): Promise<ReceptionDetail[]> {
+  const { data } = await httpClient.get<ReceptionDetail[]>(`/reception/patient/${patientId}`);
+  return data;
+}
+
+/** تاریخچه خدمات پرونده */
+export async function fetchPatientServiceHistory(
+  patientId: number,
+): Promise<PatientServiceHistoryItem[]> {
+  const { data } = await httpClient.get<PatientServiceHistoryItem[]>(
+    `/reception/patient/${patientId}/services-history`,
+  );
   return data;
 }
 
@@ -53,6 +71,27 @@ export async function deleteReception(id: number): Promise<void> {
 /** بازیابی پذیرش حذف‌شده */
 export async function restoreReception(id: number): Promise<ReceptionDetail> {
   const { data } = await httpClient.post<ReceptionDetail>(`/reception/${id}/restore`);
+  return data;
+}
+
+/** پایان پذیرش */
+export async function endReception(id: number): Promise<EndReceptionResult> {
+  const { data } = await httpClient.post<EndReceptionResult>(`/reception/${id}/end`);
+  return data;
+}
+
+/** آپلود عکس دندان برای ضوابط */
+export async function uploadReceptionPhoto(
+  id: number,
+  file: File,
+): Promise<{ id: number; file_name: string; url: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await httpClient.post<{ id: number; file_name: string; url: string }>(
+    `/reception/${id}/photos`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
   return data;
 }
 

@@ -5,24 +5,25 @@ import { JalaliDatePicker } from '@/platform/components/JalaliDatePicker/JalaliD
 import { fetchAssistants, fetchDoctors } from '../api';
 import { useReceptionStore } from '../store/receptionStore';
 
-/** فوکوس به کنترل داخل ظرف */
 function focusField(wrap: HTMLElement | null) {
   wrap?.querySelector<HTMLElement>('input')?.focus();
 }
 
-/** انتخاب فشرده پزشک/دستیار به‌همراه تاریخ اعتبار و کد معرفی */
+/** انتخاب پزشک/دستیار و تاریخ‌ها — فرم فشرده داخل کارت */
 export function DoctorSelection() {
   const editing = useReceptionStore((s) => s.editing);
   const doctorId = useReceptionStore((s) => s.doctorId);
   const doctorMedicalCode = useReceptionStore((s) => s.doctorMedicalCode);
   const assistantId = useReceptionStore((s) => s.assistantId);
   const bookingDate = useReceptionStore((s) => s.bookingDate);
+  const receptionDate = useReceptionStore((s) => s.receptionDate);
   const discount = useReceptionStore((s) => s.discount);
   const referralCode = useReceptionStore((s) => s.referralCode);
   const bookingDateFocusToken = useReceptionStore((s) => s.bookingDateFocusToken);
   const setDoctor = useReceptionStore((s) => s.setDoctor);
   const setAssistant = useReceptionStore((s) => s.setAssistant);
   const setBookingDate = useReceptionStore((s) => s.setBookingDate);
+  const setReceptionDate = useReceptionStore((s) => s.setReceptionDate);
   const setDiscount = useReceptionStore((s) => s.setDiscount);
   const setReferralCode = useReceptionStore((s) => s.setReferralCode);
   const requestBookingDateFocus = useReceptionStore((s) => s.requestBookingDateFocus);
@@ -52,15 +53,16 @@ export function DoctorSelection() {
   }, [bookingDateFocusToken]);
 
   return (
-    <Form layout="vertical" size="middle">
-      <Row gutter={[12, 0]}>
-        <Col xs={24} sm={12} md={6} lg={5}>
+    <Form layout="vertical" size="small">
+      <Row gutter={[8, 0]}>
+        <Col span={24}>
           <Form.Item
             label="پزشک"
             required
+            style={{ marginBottom: 8 }}
             extra={
               doctorMedicalCode ? (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                   کد نظام: {doctorMedicalCode}
                 </Typography.Text>
               ) : null
@@ -88,9 +90,9 @@ export function DoctorSelection() {
             />
           </Form.Item>
         </Col>
-        <Col xs={24} sm={12} md={6} lg={5}>
+        <Col span={24}>
           <div ref={assistantWrapRef}>
-            <Form.Item label="دستیار">
+            <Form.Item label="دستیار" style={{ marginBottom: 8 }}>
               <Select
                 showSearch
                 allowClear
@@ -117,9 +119,9 @@ export function DoctorSelection() {
             </Form.Item>
           </div>
         </Col>
-        <Col xs={24} sm={12} md={6} lg={5}>
+        <Col span={12}>
           <div ref={bookingWrapRef}>
-            <Form.Item label="تاریخ اعتبار دفترچه">
+            <Form.Item label="اعتبار دفترچه" style={{ marginBottom: 8 }}>
               <JalaliDatePicker
                 value={bookingDate}
                 disabled={!editing}
@@ -132,9 +134,19 @@ export function DoctorSelection() {
             </Form.Item>
           </div>
         </Col>
-        <Col xs={24} sm={12} md={6} lg={4}>
+        <Col span={12}>
+          <Form.Item label="تاریخ پذیرش" required style={{ marginBottom: 8 }}>
+            <JalaliDatePicker
+              value={receptionDate}
+              disabled={!editing}
+              style={{ width: '100%' }}
+              onChange={(v) => setReceptionDate(v || '')}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
           <div ref={discountWrapRef}>
-            <Form.Item label="تخفیف">
+            <Form.Item label="تخفیف" style={{ marginBottom: 8 }}>
               <InputNumber
                 style={{ width: '100%' }}
                 min={0}
@@ -146,9 +158,9 @@ export function DoctorSelection() {
             </Form.Item>
           </div>
         </Col>
-        <Col xs={24} sm={12} md={6} lg={5}>
+        <Col span={12}>
           <div ref={referralWrapRef}>
-            <Form.Item label="کد معرفی‌نامه تکمیلی">
+            <Form.Item label="کد معرفی‌نامه" style={{ marginBottom: 0 }}>
               <InputNumber
                 style={{ width: '100%' }}
                 disabled={!editing}

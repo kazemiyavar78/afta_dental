@@ -1,6 +1,8 @@
 package reception
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -19,6 +21,11 @@ type Repository interface {
 	FindPrev(cursor uint) (*Reception, error)
 	FindNext(cursor uint) (*Reception, error)
 	ReplaceServices(receptionID uint, services []ReceptionService) error
+	FindByPatientID(patientID uint) ([]Reception, error)
+	FindPreviousForPatient(patientID, currentID uint) (*Reception, error)
+	FindPatientReceptionsInRange(patientID uint, from, to time.Time) ([]Reception, error)
+	CountPhotos(receptionID uint) (int64, error)
+	AddPhoto(photo *ReceptionPhoto) error
 }
 
 type gormRepository struct {
@@ -53,7 +60,7 @@ func (r *gormRepository) Restore(id uint) error {
 // FindByID پذیرش را با خدمات برمی‌گرداند.
 func (r *gormRepository) FindByID(id uint) (*Reception, error) {
 	var rec Reception
-	err := r.db.Preload("Services").Where("ID = ?", id).First(&rec).Error
+	err := r.db.Preload("Services").Preload("Photos").Where("ID = ?", id).First(&rec).Error
 	if err != nil {
 		return nil, err
 	}
@@ -134,4 +141,49 @@ func (r *gormRepository) ReplaceServices(receptionID uint, services []ReceptionS
 		}
 		return tx.Omit(clause.Associations).Create(&services).Error
 	})
+}
+
+// FindByPatientID پذیرش‌های یک پرونده را به ترتیب تاریخ پذیرش برمی‌گرداند.
+func (r *gormRepository) FindByPatientID(patientID uint) ([]Reception, error) {
+	var list []Reception
+	err := r.db.Preload("Services").Preload("Photos").
+		Where("PatientID = ?", patientID).
+		Order("ReceptionDate ASC, ID ASC").
+		Find(&list).Error
+	return list, err
+}
+
+// FindPreviousForPatient پذیرش قبلی همان پرونده (قبل از currentID) را برمی‌گرداند.
+func (r *gormRepository) FindPreviousForPatient(patientID, currentID uint) (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").
+		Where("PatientID = ? AND ID < ?", patientID, currentID).
+		Order("ID DESC").
+		Take(&rec).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// FindPatientReceptionsInRange پذیرش‌های پرونده در بازه زمانی را برمی‌گرداند.
+func (r *gormRepository) FindPatientReceptionsInRange(patientID uint, from, to time.Time) ([]Reception, error) {
+	var list []Reception
+	err := r.db.Preload("Services").
+		Where("PatientID = ? AND ReceptionDate >= ? AND ReceptionDate <= ?", patientID, from, to).
+		Order("ReceptionDate ASC, ID ASC").
+		Find(&list).Error
+	return list, err
+}
+
+// CountPhotos تعداد عکس‌های آپلودشده پذیرش را برمی‌گرداند.
+func (r *gormRepository) CountPhotos(receptionID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&ReceptionPhoto{}).Where("ReceptionID = ?", receptionID).Count(&count).Error
+	return count, err
+}
+
+// AddPhoto عکس پذیرش را ذخیره می‌کند.
+func (r *gormRepository) AddPhoto(photo *ReceptionPhoto) error {
+	return r.db.Create(photo).Error
 }

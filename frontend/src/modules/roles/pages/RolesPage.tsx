@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Button, Checkbox, Form, Input, Modal, Space, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Checkbox, Divider, Form, Input, Modal, Space, Tag, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, SafetyOutlined } from '@ant-design/icons';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,13 +18,88 @@ import {
   updateRole,
 } from '../api';
 import { roleSchema, type RoleFormValues } from '../hooks';
-import type { RoleDetail } from '../types';
+import type { Permission, RoleDetail } from '../types';
 
 const emptyFormValues: RoleFormValues = {
   name: '',
   description: '',
   permission_ids: [],
 };
+
+/** برچسب فارسی ماژول‌ها بر اساس پیشوند نام مجوز */
+const MODULE_LABELS: Record<string, string> = {
+  bank_account: 'حساب بانکی',
+  fund: 'صندوق',
+  logs: 'لاگ‌ها',
+  organization: 'سازمان',
+  organization_packages: 'بسته‌های سازمانی',
+  patient: 'بیماران',
+  reception: 'پذیرش',
+  regulation: 'ضوابط',
+  roles: 'نقش‌ها',
+  security: 'امنیت',
+  services: 'خدمات',
+  special_code: 'کد خاص',
+  tariff: 'تعرفه',
+  users: 'کاربران',
+  wallet: 'کیف پول',
+};
+
+/**
+ * پیشوند ماژول را از نام مجوز استخراج می‌کند.
+ * @param permissionName نام کامل مجوز مثل bank_account.read
+ */
+function permissionModule(permissionName: string): string {
+  const idx = permissionName.indexOf('.');
+  return idx === -1 ? permissionName : permissionName.slice(0, idx);
+}
+
+/**
+ * آیا این مجوز، مجوز «خواندن» ماژول است؟
+ * @param permissionName نام کامل مجوز
+ */
+function isModuleReadPermission(permissionName: string): boolean {
+  return permissionName.endsWith('.read');
+}
+
+/**
+ * گروه‌بندی مجوزها بر اساس پیشوند ماژول (مرتب‌شده بر اساس کلید).
+ * @param permissions لیست مجوزهای سیستم
+ */
+function groupPermissionsByModule(permissions: Permission[]): { module: string; label: string; items: Permission[] }[] {
+  const groups = new Map<string, Permission[]>();
+  for (const p of permissions) {
+    const module = permissionModule(p.name);
+    const list = groups.get(module) ?? [];
+    list.push(p);
+    groups.set(module, list);
+  }
+
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([module, items]) => ({
+      module,
+      label: MODULE_LABELS[module] ?? module,
+      items: [...items].sort((a, b) => {
+        const aRead = isModuleReadPermission(a.name) ? 0 : 1;
+        const bRead = isModuleReadPermission(b.name) ? 0 : 1;
+        if (aRead !== bRead) return aRead - bRead;
+        return a.name.localeCompare(b.name);
+      }),
+    }));
+}
+
+/**
+ * آیا نقش تمام مجوزهای سیستم را دارد (ادمین)؟
+ * @param role نقش
+ * @param allPermissionIds شناسه تمام مجوزهای سیستم
+ */
+function roleHasAllPermissions(role: RoleDetail, allPermissionIds: number[]): boolean {
+  if (role.name === 'Admin') return true;
+  if (allPermissionIds.length === 0) return false;
+  const owned = new Set(role.permission_ids ?? []);
+  return allPermissionIds.every((id) => owned.has(id));
+}
 
 /** صفحه مدیریت نقش‌ها و انتصاب مجوزها */
 export function RolesPage() {
@@ -46,11 +121,15 @@ export function RolesPage() {
     handleSubmit,
     reset,
     setError,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<RoleFormValues>({
     resolver: zodResolver(roleSchema),
     defaultValues: emptyFormValues,
   });
+
+  const selectedIds = watch('permission_ids') ?? [];
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -108,10 +187,57 @@ export function RolesPage() {
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const permissionOptions = permissions.map((p) => ({
-    label: `${p.description || p.name} (${p.name})`,
-    value: p.id,
-  }));
+  const permissionGroups = useMemo(() => groupPermissionsByModule(permissions), [permissions]);
+  const allPermissionIds = useMemo(() => permissions.map((p) => p.id), [permissions]);
+
+  const readIdByModule = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of permissions) {
+      if (isModuleReadPermission(p.name)) {
+        map.set(permissionModule(p.name), p.id);
+      }
+    }
+    return map;
+  }, [permissions]);
+
+  /**
+   * تغییر انتخاب مجوز با قانون: بدون read، بقیه ماژول قابل انتخاب نیستند.
+   * @param permission مجوز هدف
+   * @param checked وضعیت جدید چک‌باکس
+   * @param currentIds شناسه‌های انتخاب‌شده فعلی
+   */
+  const togglePermission = (permission: Permission, checked: boolean, currentIds: number[]) => {
+    const module = permissionModule(permission.name);
+    const readId = readIdByModule.get(module);
+    const moduleIds = permissions.filter((p) => permissionModule(p.name) === module).map((p) => p.id);
+
+    if (isModuleReadPermission(permission.name)) {
+      if (!checked) {
+        setValue(
+          'permission_ids',
+          currentIds.filter((id) => !moduleIds.includes(id)),
+          { shouldDirty: true },
+        );
+        return;
+      }
+      setValue('permission_ids', [...new Set([...currentIds, permission.id])], { shouldDirty: true });
+      return;
+    }
+
+    if (!checked) {
+      setValue(
+        'permission_ids',
+        currentIds.filter((id) => id !== permission.id),
+        { shouldDirty: true },
+      );
+      return;
+    }
+
+    if (readId != null && !currentIds.includes(readId)) {
+      return;
+    }
+    setValue('permission_ids', [...new Set([...currentIds, permission.id])], { shouldDirty: true });
+  };
 
   const columns: ColumnsType<RoleDetail> = [
     { title: 'نام', dataIndex: 'name', key: 'name', width: 160 },
@@ -120,9 +246,12 @@ export function RolesPage() {
       title: 'مجوزها',
       key: 'permissions',
       render: (_, record) => (
-        <Typography.Text type="secondary">
-          {record.permission_ids?.length ?? 0} مجوز
-        </Typography.Text>
+        <Space size={4}>
+          <Typography.Text type="secondary">
+            {record.permission_ids?.length ?? 0} مجوز
+          </Typography.Text>
+          {roleHasAllPermissions(record, allPermissionIds) && <Tag color="blue">ادمین</Tag>}
+        </Space>
       ),
     },
     {
@@ -139,34 +268,37 @@ export function RolesPage() {
       title: 'عملیات',
       key: 'actions',
       width: 200,
-      render: (_, record) => (
-        <>
-          <PermissionGuard permission="roles.update">
-            <Button type="link" icon={<EditOutlined />} onClick={() => openEdit(record)}>
-              ویرایش
-            </Button>
-          </PermissionGuard>
-          <PermissionGuard permission="roles.delete">
-            <Button
-              type="link"
-              danger
-              icon={<DeleteOutlined />}
-              disabled={record.name === 'Admin'}
-              loading={deleteMutation.isPending}
-              onClick={() =>
-                confirmDialog({
-                  title: 'حذف نقش',
-                  content: `آیا از حذف نقش «${record.name}» مطمئن هستید؟`,
-                  okType: 'danger',
-                  onConfirm: () => deleteMutation.mutateAsync(record.id),
-                })
-              }
-            >
-              حذف
-            </Button>
-          </PermissionGuard>
-        </>
-      ),
+      render: (_, record) => {
+        const isAdminRole = roleHasAllPermissions(record, allPermissionIds);
+        return (
+          <>
+            <PermissionGuard permission="roles.update">
+              <Button type="link" icon={<EditOutlined />} onClick={() => openEdit(record)}>
+                ویرایش
+              </Button>
+            </PermissionGuard>
+            <PermissionGuard permission="roles.delete">
+              <Button
+                type="link"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={isAdminRole}
+                loading={deleteMutation.isPending}
+                onClick={() =>
+                  confirmDialog({
+                    title: 'حذف نقش',
+                    content: `آیا از حذف نقش «${record.name}» مطمئن هستید؟`,
+                    okType: 'danger',
+                    onConfirm: () => deleteMutation.mutateAsync(record.id),
+                  })
+                }
+              >
+                حذف
+              </Button>
+            </PermissionGuard>
+          </>
+        );
+      },
     },
   ];
 
@@ -190,7 +322,7 @@ export function RolesPage() {
         onCancel={closeModal}
         footer={null}
         destroyOnHidden
-        width={720}
+        width={760}
       >
         <Form
           layout="vertical"
@@ -211,7 +343,10 @@ export function RolesPage() {
               name="name"
               control={control}
               render={({ field }) => (
-                <Input {...field} disabled={editing?.name === 'Admin'} />
+                <Input
+                  {...field}
+                  disabled={editing != null && roleHasAllPermissions(editing, allPermissionIds)}
+                />
               )}
             />
           </Form.Item>
@@ -239,18 +374,41 @@ export function RolesPage() {
             {loadingPermissions ? (
               <Typography.Text type="secondary">در حال بارگذاری مجوزها...</Typography.Text>
             ) : (
-              <Controller
-                name="permission_ids"
-                control={control}
-                render={({ field }) => (
-                  <Checkbox.Group
-                    style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflow: 'auto' }}
-                    options={permissionOptions}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                )}
-              />
+              <div style={{ maxHeight: 360, overflow: 'auto', paddingInlineEnd: 4 }}>
+                {permissionGroups.map((group) => {
+                  const readId = readIdByModule.get(group.module);
+                  const hasRead = readId == null || selectedIds.includes(readId);
+                  return (
+                    <div key={group.module} style={{ marginBottom: 12 }}>
+                      <Divider plain style={{ margin: '8px 0' }}>
+                        <Typography.Text strong>
+                          {group.label}{' '}
+                          <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
+                            ({group.module})
+                          </Typography.Text>
+                        </Typography.Text>
+                      </Divider>
+                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                        {group.items.map((p) => {
+                          const isRead = isModuleReadPermission(p.name);
+                          const disabled = !isRead && readId != null && !hasRead;
+                          return (
+                            <Checkbox
+                              key={p.id}
+                              checked={selectedIds.includes(p.id)}
+                              disabled={disabled}
+                              onChange={(e) => togglePermission(p, e.target.checked, selectedIds)}
+                            >
+                              {p.description || p.name}{' '}
+                              <Typography.Text type="secondary">({p.name})</Typography.Text>
+                            </Checkbox>
+                          );
+                        })}
+                      </Space>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </Form.Item>
           <Space>

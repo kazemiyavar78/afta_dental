@@ -11,10 +11,10 @@ import { ToothChartModal } from './ToothChartModal';
 
 /** گزینه‌های جهت دندان (چهار ربع) */
 const DIRECTION_OPTIONS = [
-  { value: 1, label: 'بالا راست' },
-  { value: 2, label: 'بالا چپ' },
-  { value: 3, label: 'پایین راست' },
-  { value: 4, label: 'پایین چپ' },
+  { value: 1, label: 'راست بالا' },
+  { value: 2, label: 'چپ بالا' },
+  { value: 3, label: 'راست پایین' },
+  { value: 4, label: 'چپ پایین' },
 ];
 
 type ServiceRowProps = {

@@ -8,9 +8,9 @@ import (
 
 // RegisterRoutes مسیرهای API سازمان را ثبت می‌کند.
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
-	r.GET("/organization", middleware.RequireRole("Admin", "Reception"), middleware.AuthorizationMiddleware(), h.List)
-	r.POST("/organization", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.Create)
-	r.GET("/organization/:id", middleware.RequireRole("Admin", "Reception"), middleware.AuthorizationMiddleware(), h.GetByID)
-	r.PUT("/organization/:id", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.Update)
-	r.DELETE("/organization/:id", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.Delete)
+	r.GET("/organization", middleware.RequirePermission("organization.read"), middleware.AuthorizationMiddleware(), h.List)
+	r.POST("/organization", middleware.RequirePermission("organization.create"), middleware.AuthorizationMiddleware(), h.Create)
+	r.GET("/organization/:id", middleware.RequirePermission("organization.read"), middleware.AuthorizationMiddleware(), h.GetByID)
+	r.PUT("/organization/:id", middleware.RequirePermission("organization.update"), middleware.AuthorizationMiddleware(), h.Update)
+	r.DELETE("/organization/:id", middleware.RequirePermission("organization.delete"), middleware.AuthorizationMiddleware(), h.Delete)
 }

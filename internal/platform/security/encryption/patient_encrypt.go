@@ -8,15 +8,16 @@ import (
 
 // PatientSensitiveData فیلدهای حساس بیمار برای محاسبه هش یکپارچگی.
 type PatientSensitiveData struct {
-	FirstName         string
-	LastName          string
-	NationalCode      string
-	BirthDate         string
-	Address           string
-	HomePhoneNumber   string
-	MobilePhoneNumber string
-	FileNumber        string
-	Sex               bool
+	FirstName           string
+	LastName            string
+	NationalCode        string
+	BirthDate           string
+	Address             string
+	HomePhoneNumber     string
+	MobilePhoneNumber   string
+	FileNumber          string
+	Sex                 bool
+	IsForeignNational   bool
 }
 
 // PatientEncryptionService سرویس رمزنگاری و IntegrityHash بیمار.
@@ -31,7 +32,7 @@ func NewPatientEncryptionService(encryptor *Encryptor) *PatientEncryptionService
 
 // sensitiveFields رشته یکپارچه‌سازی‌شده فیلدهای حساس بیمار را برمی‌گرداند.
 func (s *PatientEncryptionService) sensitiveFields(data PatientSensitiveData) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%t",
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%t|%t",
 		data.FirstName,
 		data.LastName,
 		data.NationalCode,
@@ -41,6 +42,7 @@ func (s *PatientEncryptionService) sensitiveFields(data PatientSensitiveData) st
 		data.MobilePhoneNumber,
 		data.FileNumber,
 		data.Sex,
+		data.IsForeignNational,
 	)
 }
 
@@ -64,5 +66,22 @@ func (s *PatientEncryptionService) CheckSecurityCode(data PatientSensitiveData, 
 
 	hash := sha256.Sum256([]byte(s.sensitiveFields(data)))
 	expected := hex.EncodeToString(hash[:])
-	return decrypted == expected
+	if decrypted == expected {
+		return true
+	}
+
+	// سازگاری با هش‌های قدیمی بدون فیلد اتباع
+	legacy := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%t",
+		data.FirstName,
+		data.LastName,
+		data.NationalCode,
+		data.BirthDate,
+		data.Address,
+		data.HomePhoneNumber,
+		data.MobilePhoneNumber,
+		data.FileNumber,
+		data.Sex,
+	)
+	legacyHash := sha256.Sum256([]byte(legacy))
+	return decrypted == hex.EncodeToString(legacyHash[:])
 }

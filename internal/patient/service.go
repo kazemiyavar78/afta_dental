@@ -2,6 +2,7 @@ package patient
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
@@ -61,6 +62,7 @@ func toSensitiveData(p *Patient) encryption.PatientSensitiveData {
 		MobilePhoneNumber: derefString(p.MobilePhoneNumber),
 		FileNumber:        p.FileNumber,
 		Sex:               p.Sex,
+		IsForeignNational: p.IsForeignNational,
 	}
 }
 
@@ -77,6 +79,7 @@ func toResponse(p *Patient) *Response {
 		MobilePhoneNumber: p.MobilePhoneNumber,
 		FileNumber:        p.FileNumber,
 		Sex:               p.Sex,
+		IsForeignNational: p.IsForeignNational,
 	}
 }
 
@@ -92,21 +95,30 @@ func (s *Service) verifyIntegrity(p *Patient, actorID int, ip string) error {
 
 // Create بیمار جدید می‌سازد و هش امنیتی آن را تولید می‌کند.
 func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+	if err := ValidateNationalCode(req.NationalCode, req.IsForeignNational); err != nil {
+		return nil, err
+	}
 	birthDate, err := parseBirthDate(req.BirthDate)
 	if err != nil {
 		return nil, err
 	}
 
+	nationalCode := strings.TrimSpace(req.NationalCode)
+	if req.IsForeignNational && nationalCode == "" {
+		nationalCode = "ATBA-" + strings.TrimSpace(req.FileNumber)
+	}
+
 	p := &Patient{
 		FirstName:         req.FirstName,
 		LastName:          req.LastName,
-		NationalCode:      req.NationalCode,
+		NationalCode:      nationalCode,
 		BirthDate:         birthDate,
 		Address:           req.Address,
 		HomePhoneNumber:   req.HomePhoneNumber,
 		MobilePhoneNumber: req.MobilePhoneNumber,
 		FileNumber:        req.FileNumber,
 		Sex:               req.Sex,
+		IsForeignNational: req.IsForeignNational,
 	}
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(p))
@@ -218,16 +230,25 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if err != nil {
 		return nil, err
 	}
+	if err := ValidateNationalCode(req.NationalCode, req.IsForeignNational); err != nil {
+		return nil, err
+	}
+
+	nationalCode := strings.TrimSpace(req.NationalCode)
+	if req.IsForeignNational && nationalCode == "" {
+		nationalCode = "ATBA-" + strings.TrimSpace(req.FileNumber)
+	}
 
 	p.FirstName = req.FirstName
 	p.LastName = req.LastName
-	p.NationalCode = req.NationalCode
+	p.NationalCode = nationalCode
 	p.BirthDate = birthDate
 	p.Address = req.Address
 	p.HomePhoneNumber = req.HomePhoneNumber
 	p.MobilePhoneNumber = req.MobilePhoneNumber
 	p.FileNumber = req.FileNumber
 	p.Sex = req.Sex
+	p.IsForeignNational = req.IsForeignNational
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(p))
 	if err != nil {

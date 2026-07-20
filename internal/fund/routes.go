@@ -7,7 +7,7 @@ import (
 )
 
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
-	r.GET("/fund", middleware.RequireRole("Admin", "Reception"), middleware.AuthorizationMiddleware(), h.List)
-	r.POST("/fund", middleware.RequireRole("Admin"), middleware.AuthorizationMiddleware(), h.Create)
-	r.GET("/fund/:id", middleware.RequireRole("Admin", "Reception"), middleware.AuthorizationMiddleware(), h.GetByID)
+	r.GET("/fund", middleware.RequirePermission("fund.read"), middleware.AuthorizationMiddleware(), h.List)
+	r.POST("/fund", middleware.RequirePermission("fund.create"), middleware.AuthorizationMiddleware(), h.Create)
+	r.GET("/fund/:id", middleware.RequirePermission("fund.read"), middleware.AuthorizationMiddleware(), h.GetByID)
 }

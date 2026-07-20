@@ -150,9 +150,9 @@ func (g *Guard) ResetLoginAttempts(ip string) error {
 	return g.repo.ResetAttempts(ip)
 }
 
-// CheckWorkHours بررسی ساعات کاری (Admin مستثنی).
-func (g *Guard) CheckWorkHours(roleName string) error {
-	if roleName == "Admin" {
+// CheckWorkHours بررسی ساعات کاری (ادمین با تمام مجوزها مستثنی است).
+func (g *Guard) CheckWorkHours(isAdmin bool) error {
+	if isAdmin {
 		return nil
 	}
 

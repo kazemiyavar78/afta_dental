@@ -13,9 +13,10 @@ export type AuthUser = {
 type AuthState = {
   user: AuthUser | null;
   permissions: string[];
+  isAdmin: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
-  setUser: (user: AuthUser | null, permissions: string[]) => void;
+  setUser: (user: AuthUser | null, permissions: string[], isAdmin?: boolean) => void;
   setLoading: (loading: boolean) => void;
   clear: () => void;
 };
@@ -24,12 +25,14 @@ type AuthState = {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   permissions: [],
+  isAdmin: false,
   isLoading: true,
   isAuthenticated: false,
-  setUser: (user, permissions) =>
+  setUser: (user, permissions, isAdmin = false) =>
     set({
       user,
       permissions,
+      isAdmin,
       isAuthenticated: user !== null,
       isLoading: false,
     }),
@@ -38,6 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       user: null,
       permissions: [],
+      isAdmin: false,
       isAuthenticated: false,
       isLoading: false,
     }),

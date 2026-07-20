@@ -143,8 +143,15 @@ func (s *Service) HandleUserLogin(req LoginRequest, ip, browser string) (*User, 
 		return nil, nil, apperror.ErrAccountLocked
 	}
 
-	roleName := user.Role.Name
-	if err := s.loginGuard.CheckWorkHours(roleName); err != nil {
+	rolePerms, err := s.repo.FindPermissionsByRoleID(user.RoleID)
+	if err != nil {
+		return nil, nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزها.", err.Error(), 500)
+	}
+	permNames := make([]string, 0, len(rolePerms))
+	for _, p := range rolePerms {
+		permNames = append(permNames, p.Name)
+	}
+	if err := s.loginGuard.CheckWorkHours(HasAllPermissions(permNames)); err != nil {
 		_ = s.audit.LogEvent(&user.ID, ip, audit.EventLoginFailed,
 			fmt.Sprintf("ورود خارج ساعات کاری — %s", user.Username))
 		return nil, nil, err
@@ -188,8 +195,8 @@ func (s *Service) HandleLogout(sessionID string, userID int, ip string) error {
 }
 
 // GetUserByID کاربر را با شناسه برمی‌گرداند.
-func (s *Service) GetUserByID(id int, actorUserID int, actorRole string) (*UserResponse, error) {
-	if actorRole != "Admin" && actorUserID != id {
+func (s *Service) GetUserByID(id int, actorUserID int, isAdmin bool) (*UserResponse, error) {
+	if !isAdmin && actorUserID != id {
 		return nil, apperror.ErrForbidden
 	}
 
@@ -202,7 +209,12 @@ func (s *Service) GetUserByID(id int, actorUserID int, actorRole string) (*UserR
 	}
 
 	if !VerifyUserIntegrity(s.signer, user) {
-		return nil, apperror.ErrIntegrity
+		// ادمین باید بتواند کاربر خراب‌شده را ببیند و با ذخیرهٔ مجدد تعمیر کند
+		if !isAdmin {
+			return nil, apperror.ErrIntegrity
+		}
+		_ = s.audit.LogEvent(&actorUserID, "", audit.EventDataTampering,
+			fmt.Sprintf("خواندن کاربر با یکپارچگی نقض‌شده ID=%d توسط ادمین", user.ID))
 	}
 
 	return s.toResponse(user), nil
@@ -217,12 +229,8 @@ func (s *Service) GetUserSessions(userID int) ([]session.Session, error) {
 	return sessions, nil
 }
 
-// ListUsers لیست کاربران (فقط Admin).
-func (s *Service) ListUsers(actorRole string) ([]UserResponse, error) {
-	if actorRole != "Admin" {
-		return nil, apperror.ErrForbidden
-	}
-
+// ListUsers لیست کاربران را برمی‌گرداند.
+func (s *Service) ListUsers() ([]UserResponse, error) {
 	users, err := s.repo.FindAll()
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن کاربران.", err.Error(), 500)
@@ -262,8 +270,8 @@ func (s *Service) ListAssistants() ([]UserResponse, error) {
 }
 
 // UpdateUser کاربر را به‌روزرسانی می‌کند.
-func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, actorRole, ip string) (*UserResponse, error) {
-	if actorRole != "Admin" && actorUserID != id {
+func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, isAdmin bool, ip string) (*UserResponse, error) {
+	if !isAdmin && actorUserID != id {
 		return nil, apperror.ErrForbidden
 	}
 
@@ -291,19 +299,20 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, act
 		user.MedicalCode = req.MedicalCode
 	}
 	if req.UserType != nil {
-		
 		user.UserType = UserType(*req.UserType)
 	}
 	if req.RoleID != nil {
-		if actorRole != "Admin" {
+		if !isAdmin {
 			return nil, apperror.ErrForbidden
 		}
 		if err := s.ensureAssignableRole(*req.RoleID, actorUserID, ip); err != nil {
 			return nil, err
 		}
 		user.RoleID = *req.RoleID
+		// association از Preload را خالی کن تا با RoleID جدید هم‌خوان نباشد
+		user.Role = Role{}
 	}
-	if req.IsActive != nil && actorRole == "Admin" {
+	if req.IsActive != nil && isAdmin {
 		user.IsActive = *req.IsActive
 	}
 
@@ -315,8 +324,6 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, act
 	}
 	user.SecurityCode = securityCode
 	user.IntegrityHash = SignUserIntegrityHash(s.signer, user)
-
-	fmt.Println("user.UserType", user.UserType)
 
 	if err := s.repo.Update(user); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در به‌روزرسانی کاربر.", err.Error(), 500)
@@ -377,6 +384,23 @@ func (s *Service) GetRoleName(userID int) (string, error) {
 		return "", err
 	}
 	return user.Role.Name, nil
+}
+
+// GetAuthPermissions نام مجوزهای کاربر و وضعیت ادمین (داشتن تمام مجوزها) را برمی‌گرداند.
+func (s *Service) GetAuthPermissions(userID int) (permissions []string, isAdmin bool, err error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, false, err
+	}
+	perms, err := s.repo.FindPermissionsByRoleID(user.RoleID)
+	if err != nil {
+		return nil, false, err
+	}
+	names := make([]string, 0, len(perms))
+	for _, p := range perms {
+		names = append(names, p.Name)
+	}
+	return names, HasAllPermissions(names), nil
 }
 
 // CheckCurrentUserSecurityCode SecurityCode کاربر فعلی را بررسی می‌کند.
@@ -462,7 +486,7 @@ func (s *Service) ensureAdminHasAllPermissions() error {
 	adminRole, err := s.repo.FindRoleByName("Admin")
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil
+			return s.ensureEmptyOperationalRoles()
 		}
 		return err
 	}
@@ -482,7 +506,74 @@ func (s *Service) ensureAdminHasAllPermissions() error {
 		return err
 	}
 	adminRole.IntegrityHash = SignRoleIntegrityHash(s.signer, adminRole, permIDs)
-	return s.repo.UpdateRole(adminRole)
+	if err := s.repo.UpdateRole(adminRole); err != nil {
+		return err
+	}
+	return s.ensureEmptyOperationalRoles()
+}
+
+// ensureEmptyOperationalRoles برای نقش‌های Reception/Doctor بدون مجوز، مجموعه پیش‌فرض عملیاتی می‌گذارد.
+func (s *Service) ensureEmptyOperationalRoles() error {
+	defaults := map[string][]string{
+		"Reception": {
+			"reception.read", "reception.create", "reception.update", "reception.delete",
+			"patient.read", "patient.create", "patient.update",
+			"organization.read", "organization_packages.read",
+			"services.read", "fund.read",
+			"wallet.read", "wallet.cash", "wallet.card_to_card", "wallet.card_reader",
+			"bank_account.read",
+			"tariff.read", "special_code.read", "regulation.read",
+		},
+		"Doctor": {
+			"reception.read", "reception.update",
+			"patient.read", "services.read",
+		},
+	}
+	for roleName, permNames := range defaults {
+		if err := s.assignPermissionsIfRoleEmpty(roleName, permNames); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// assignPermissionsIfRoleEmpty در صورتی که نقش وجود داشته و هیچ مجوزی نداشته باشد، مجوزهای داده‌شده را می‌دهد.
+func (s *Service) assignPermissionsIfRoleEmpty(roleName string, permissionNames []string) error {
+	role, err := s.repo.FindRoleByName(roleName)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	existing, err := s.repo.FindPermissionIDsByRoleID(role.ID)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return nil
+	}
+
+	permIDs := make([]int, 0, len(permissionNames))
+	rps := make([]RolePermission, 0, len(permissionNames))
+	for _, name := range permissionNames {
+		p, err := s.repo.FindPermissionByName(name)
+		if err != nil || p == nil {
+			continue
+		}
+		permIDs = append(permIDs, p.ID)
+		rp := RolePermission{RoleID: role.ID, PermissionID: p.ID}
+		rp.IntegrityHash = SignRolePermissionIntegrityHash(s.signer, &rp)
+		rps = append(rps, rp)
+	}
+	if len(rps) == 0 {
+		return nil
+	}
+	if err := s.repo.ReplaceRolePermissions(role.ID, rps); err != nil {
+		return err
+	}
+	role.IntegrityHash = SignRoleIntegrityHash(s.signer, role, permIDs)
+	return s.repo.UpdateRole(role)
 }
 
 // FixRoleIntegrityHashes هش نقش‌های بدون هش یا نقش‌های قدیمی بدون مجوز را به فرمت جدید مهاجرت می‌دهد.
@@ -543,6 +634,7 @@ func (s *Service) GetMe(userID int) (*MeResponse, error) {
 	return &MeResponse{
 		User:        *s.toResponse(user),
 		Permissions: names,
+		IsAdmin:     HasAllPermissions(names),
 	}, nil
 }
 
@@ -706,13 +798,12 @@ func (s *Service) DeleteRole(id int, actorID int, ip string) error {
 	if err != nil {
 		return apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
 	}
-	if role.Name == "Admin" {
-		return apperror.New("VALIDATION_ERROR", "حذف نقش Admin مجاز نیست.", "cannot delete admin role", 400)
-	}
-
 	permIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
 	if err != nil {
 		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
+	}
+	if role.Name == "Admin" || s.permissionIDsCoverCatalog(permIDs) {
+		return apperror.New("VALIDATION_ERROR", "حذف نقش ادمین (دارای تمام مجوزها) مجاز نیست.", "cannot delete admin role", 400)
 	}
 	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
 		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
@@ -835,20 +926,37 @@ func (s *Service) toRoleDetail(role *Role) (*RoleDetailResponse, error) {
 	}, nil
 }
 
-// UpdateSecuritySetting تنظیم امنیتی را به‌روزرسانی می‌کند (فقط Admin).
-func (s *Service) UpdateSecuritySetting(id int, value string, actorUserID int, actorRole, ip string) error {
-	if actorRole != "Admin" {
-		return apperror.ErrForbidden
-	}
+// UpdateSecuritySetting تنظیم امنیتی را به‌روزرسانی می‌کند.
+func (s *Service) UpdateSecuritySetting(id int, value string, actorUserID int, ip string) error {
 	return s.settings.UpdateSettingByID(id, value, actorUserID, ip)
 }
 
-// GetSecuritySettings تنظیمات امنیتی را برمی‌گرداند (فقط Admin).
-func (s *Service) GetSecuritySettings(actorRole string) ([]settings.SecuritySetting, error) {
-	if actorRole != "Admin" {
-		return nil, apperror.ErrForbidden
-	}
+// GetSecuritySettings تنظیمات امنیتی را برمی‌گرداند.
+func (s *Service) GetSecuritySettings() ([]settings.SecuritySetting, error) {
 	return s.settings.GetAllSettings(true)
+}
+
+// permissionIDsCoverCatalog بررسی می‌کند شناسه‌های مجوز کل کاتالوگ سیستم را پوشش می‌دهند.
+func (s *Service) permissionIDsCoverCatalog(permIDs []int) bool {
+	catalog := DefaultPermissionCatalog()
+	if len(permIDs) < len(catalog) {
+		return false
+	}
+	allPerms, err := s.repo.FindAllPermissions()
+	if err != nil {
+		return false
+	}
+	idSet := make(map[int]struct{}, len(permIDs))
+	for _, id := range permIDs {
+		idSet[id] = struct{}{}
+	}
+	names := make([]string, 0, len(permIDs))
+	for _, p := range allPerms {
+		if _, ok := idSet[p.ID]; ok {
+			names = append(names, p.Name)
+		}
+	}
+	return HasAllPermissions(names)
 }
 
 func (s *Service) toResponse(user *User) *UserResponse {
@@ -864,6 +972,7 @@ func (s *Service) toResponse(user *User) *UserResponse {
 		RoleName:    user.Role.Name,
 		IsActive:    user.IsActive,
 		IsLocked:    user.IsLocked,
+		UserType:    user.UserType,
 	}
 	if user.LastLoginAt != nil {
 		t := user.LastLoginAt.Format(time.RFC3339)

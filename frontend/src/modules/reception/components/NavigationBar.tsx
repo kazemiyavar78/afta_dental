@@ -17,7 +17,7 @@ type NavigationBarProps = {
   onNew: () => void;
 };
 
-/** نوار ناوبری پذیرش: اولین، قبلی، بعدی، آخرین، جدید */
+/** نوار ناوبری پذیرش — فشرده با Space.Compact */
 export function NavigationBar({
   loading,
   onFirst,
@@ -27,24 +27,16 @@ export function NavigationBar({
   onNew,
 }: NavigationBarProps) {
   return (
-    <Space wrap>
-      <Button icon={<FastBackwardOutlined />} onClick={onFirst} loading={loading}>
-        اولین
-      </Button>
-      <Button icon={<BackwardOutlined />} onClick={onPrev} loading={loading}>
-        قبلی
-      </Button>
-      <Button icon={<ForwardOutlined />} onClick={onNext} loading={loading}>
-        بعدی
-      </Button>
-      <Button icon={<FastForwardOutlined />} onClick={onLast} loading={loading}>
-        آخرین
-      </Button>
+    <Space.Compact>
+      <Button size="small" icon={<FastBackwardOutlined />} onClick={onFirst} loading={loading} />
+      <Button size="small" icon={<BackwardOutlined />} onClick={onPrev} loading={loading} />
+      <Button size="small" icon={<ForwardOutlined />} onClick={onNext} loading={loading} />
+      <Button size="small" icon={<FastForwardOutlined />} onClick={onLast} loading={loading} />
       <PermissionGuard permission="reception.create">
-        <Button type="primary" icon={<PlusOutlined />} onClick={onNew}>
+        <Button size="small" type="primary" icon={<PlusOutlined />} onClick={onNew}>
           جدید
         </Button>
       </PermissionGuard>
-    </Space>
+    </Space.Compact>
   );
 }

@@ -59,7 +59,7 @@ func (h *Handler) Logout(c *gin.Context) {
 
 	sessionID, _ := c.Get(middleware.ContextKeySessionID)
 	if sid, ok := sessionID.(uuid.UUID); ok {
-		_ = h.sessionSvc.DeleteSession(sid, uid, "", c.ClientIP())
+		_ = h.sessionSvc.DeleteSession(sid, uid, true, c.ClientIP())
 	}
 
 	_ = h.service.HandleLogout("", uid, c.ClientIP())
@@ -101,10 +101,9 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
+	canManage := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.read")
 
-	resp, err := h.service.GetUserByID(uri.ID, uid, roleName)
+	resp, err := h.service.GetUserByID(uri.ID, uid, canManage)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -115,10 +114,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 
 // ListUsers لیست کاربران.
 func (h *Handler) ListUsers(c *gin.Context) {
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
-
-	users, err := h.service.ListUsers(roleName)
+	users, err := h.service.ListUsers()
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -165,10 +161,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
+	canManage := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.update")
 
-	resp, err := h.service.UpdateUser(uri.ID, req, uid, roleName, c.ClientIP())
+	resp, err := h.service.UpdateUser(uri.ID, req, uid, canManage, c.ClientIP())
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -324,10 +319,8 @@ func (h *Handler) UpdateSecuritySetting(c *gin.Context) {
 
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
 
-	if err := h.service.UpdateSecuritySetting(req.ID, req.Value, uid, roleName, c.ClientIP()); err != nil {
+	if err := h.service.UpdateSecuritySetting(req.ID, req.Value, uid, c.ClientIP()); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -337,10 +330,7 @@ func (h *Handler) UpdateSecuritySetting(c *gin.Context) {
 
 // ListSecuritySettings لیست تنظیمات امنیتی.
 func (h *Handler) ListSecuritySettings(c *gin.Context) {
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
-
-	settings, err := h.service.GetSecuritySettings(roleName)
+	settings, err := h.service.GetSecuritySettings()
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -359,7 +349,7 @@ func (h *Handler) GetUserProfile(c *gin.Context) {
 	userID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := userID.(int)
 
-	userData, err := h.service.GetUserByID(uid, uid, "")
+	userData, err := h.service.GetUserByID(uid, uid, true)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -387,12 +377,11 @@ func (h *Handler) GetUserProfile(c *gin.Context) {
 	})
 }
 
-// ListSessions لیست نشست‌ها. Admin می‌تواند با ?user_id فیلتر کند.
+// ListSessions لیست نشست‌ها. با users.listSessions می‌توان با ?user_id فیلتر کرد.
 func (h *Handler) ListSessions(c *gin.Context) {
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
+	canListAll := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.listSessions")
 
 	var sessions []session.Session
 	var err error
@@ -403,13 +392,13 @@ func (h *Handler) ListSessions(c *gin.Context) {
 			middleware.WriteError(c, apperror.New("VALIDATION_ERROR", "شناسه کاربر نامعتبر است.", parseErr.Error(), 400))
 			return
 		}
-		if roleName != "Admin" && targetID != uid {
+		if !canListAll && targetID != uid {
 			middleware.WriteError(c, apperror.ErrForbidden)
 			return
 		}
 		sessions, err = h.sessionSvc.GetSessionsByUserID(targetID)
 	} else {
-		sessions, err = h.sessionSvc.ListSessions(uid, roleName)
+		sessions, err = h.sessionSvc.ListSessions(uid, canListAll)
 	}
 	if err != nil {
 		middleware.WriteError(c, err)
@@ -448,10 +437,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)
-	role, _ := c.Get(middleware.ContextKeyRoleName)
-	roleName, _ := role.(string)
+	canManageOthers := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.listSessions")
 
-	if err := h.sessionSvc.DeleteSession(sessionID, uid, roleName, c.ClientIP()); err != nil {
+	if err := h.sessionSvc.DeleteSession(sessionID, uid, canManageOthers, c.ClientIP()); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}

@@ -10,6 +10,8 @@ export type Patient = {
   file_number: string;
   /** true = مرد ، false = زن */
   sex: boolean;
+  /** true = اتباع خارجی */
+  is_foreign_national: boolean;
 };
 
 export type PatientPayload = {
@@ -22,6 +24,7 @@ export type PatientPayload = {
   mobile_phone_number?: string | null;
   file_number: string;
   sex: boolean;
+  is_foreign_national: boolean;
 };
 
 export type PatientSearchParams = {

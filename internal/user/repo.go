@@ -7,6 +7,7 @@ import (
 
 	"github.com/tpdenta/afta-reception/internal/platform/security/integrity"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repository اینترفیس CRUD خام کاربران، نقش‌ها و مجوزها.
@@ -75,8 +76,10 @@ func (r *gormRepository) FindByUsername(username string) (*User, error) {
 	return &u, nil
 }
 
+// Update فقط فیلدهای خود کاربر را ذخیره می‌کند و associationها (مثل Role از پیش‌بارگذاری‌شده)
+// را عمداً نادیده می‌گیرد تا GORM مقدار RoleID را با Role.ID قدیمی بازنویسی نکند.
 func (r *gormRepository) Update(user *User) error {
-	return r.db.Save(user).Error
+	return r.db.Omit(clause.Associations).Save(user).Error
 }
 
 func (r *gormRepository) Delete(id int) error {

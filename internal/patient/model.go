@@ -14,7 +14,8 @@ type Patient struct {
 	FirstName string `gorm:"column:first_name;not null"`
 	//نام خانوادگی
 	LastName string `gorm:"column:last_name;not null"`
-	//کد ملی
+	//کد ملی / شناسه اتباع (طول در لایه اعتبارسنجی محدود می‌شود؛ size در تگ نگذاشته می‌شود
+	// تا AutoMigrate در MSSQL به‌خاطر unique index روی این ستون شکست نخورد)
 	NationalCode string `gorm:"column:national_code;not null;unique"`
 	//تاریخ تولد
 	BirthDate time.Time `gorm:"column:birth_date;not null"`
@@ -28,6 +29,8 @@ type Patient struct {
 	FileNumber string `gorm:"column:file_number;not null;unique"`
 	//جنسیت (مرد=true ، زن=false)
 	Sex bool `gorm:"column:sex;not null"`
+	//اتباع (true = اتباع خارجی، false = ایرانی)
+	IsForeignNational bool `gorm:"column:is_foreign_national;not null;default:false"`
 	//هش یکپارچگی داده‌ها
 	IntegrityHash string `gorm:"column:integrity_hash;size:128;not null"`
 }

@@ -13,6 +13,7 @@ type MeResponse = {
     role_name: string;
   };
   permissions: string[];
+  is_admin: boolean;
 };
 
 type AuthContextValue = {
@@ -20,6 +21,7 @@ type AuthContextValue = {
   permissions: string[];
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
   refresh: () => Promise<void>;
@@ -35,7 +37,7 @@ type AuthProviderProps = {
 /** Provider احراز هویت — در اولین بار لود، GET /api/me را فراخوانی می‌کند */
 export function AuthProvider({ children }: AuthProviderProps) {
   const navigate = useNavigate();
-  const { user, permissions, isLoading, isAuthenticated, setUser, setLoading, clear } =
+  const { user, permissions, isAdmin, isLoading, isAuthenticated, setUser, setLoading, clear } =
     useAuthStore();
 
   const mapUser = (data: MeResponse): AuthUser => ({
@@ -51,7 +53,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setLoading(true);
     try {
       const { data } = await httpClient.get<MeResponse>('/me');
-      setUser(mapUser(data), data.permissions ?? []);
+      setUser(mapUser(data), data.permissions ?? [], Boolean(data.is_admin));
     } catch {
       clear();
     }
@@ -90,6 +92,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         permissions,
         isLoading,
         isAuthenticated,
+        isAdmin,
         hasPermission,
         hasRole,
         refresh,

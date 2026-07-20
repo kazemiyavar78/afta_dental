@@ -57,6 +57,7 @@ type UserResponse struct {
 type MeResponse struct {
 	User        UserResponse `json:"user"`
 	Permissions []string     `json:"permissions"`
+	IsAdmin     bool         `json:"is_admin"`
 }
 
 // RoleResponse پاسخ مختصر نقش (برای انتصاب به کاربر).

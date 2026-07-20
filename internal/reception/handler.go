@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 )
 
@@ -99,12 +100,97 @@ func (h *Handler) Calculate(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-	resp, err := h.service.CalculateServices(req)
+	resp, err := h.service.CalculateServicesWithActor(req, actorID(c), c.ClientIP())
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// ListByPatient لیست پذیرش‌های یک پرونده.
+func (h *Handler) ListByPatient(c *gin.Context) {
+	id, ok := parseUintParam(c, "patientId")
+	if !ok {
+		return
+	}
+	list, err := h.service.ListByPatient(id)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// PatientServiceHistory تاریخچه خدمات پرونده.
+func (h *Handler) PatientServiceHistory(c *gin.Context) {
+	id, ok := parseUintParam(c, "patientId")
+	if !ok {
+		return
+	}
+	list, err := h.service.PatientServiceHistory(id)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// EndReception پایان پذیرش را ثبت می‌کند.
+func (h *Handler) EndReception(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	resp, err := h.service.EndReception(id, actorID(c), c.ClientIP())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// UploadPhoto آپلود عکس دندان برای ضوابط.
+func (h *Handler) UploadPhoto(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		middleware.WriteError(c, apperror.New("BAD_REQUEST", "فایل آپلود نشده است.", err.Error(), 400))
+		return
+	}
+	f, err := file.Open()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	defer f.Close()
+	resp, err := h.service.UploadReceptionPhoto(id, file.Filename, f, actorID(c), c.ClientIP())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// GetPhoto دانلود/نمایش عکس پذیرش.
+func (h *Handler) GetPhoto(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	photoID, ok := parseUintParam(c, "photoId")
+	if !ok {
+		return
+	}
+	path, name, err := h.service.GetReceptionPhotoPath(id, photoID)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.FileAttachment(path, name)
 }
 
 // Delete حذف نرم پذیرش.
@@ -136,10 +222,15 @@ func (h *Handler) Restore(c *gin.Context) {
 
 // parseID شناسه مسیر را می‌خواند.
 func parseID(c *gin.Context) (uint, bool) {
-	raw := c.Param("id")
+	return parseUintParam(c, "id")
+}
+
+// parseUintParam پارامتر عددی مسیر را می‌خواند.
+func parseUintParam(c *gin.Context, name string) (uint, bool) {
+	raw := c.Param(name)
 	id64, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
-		middleware.WriteError(c, err)
+		middleware.WriteError(c, apperror.New("BAD_REQUEST", "شناسه نامعتبر است.", err.Error(), 400))
 		return 0, false
 	}
 	return uint(id64), true

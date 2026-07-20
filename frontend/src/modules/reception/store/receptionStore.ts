@@ -19,6 +19,9 @@ type ReceptionStore = {
   additionalInsuranceId: number | null;
   additionalInsurancePercentage: number | null;
   additionalInsuranceCoverage: number | null;
+  specialCodeId: number | null;
+  specialCodeValue: string;
+  specialCodeName: string;
   doctorId: number | null;
   doctorName: string;
   doctorMedicalCode: string | null;
@@ -46,6 +49,7 @@ type ReceptionStore = {
   setAdditionalInsuranceId: (id: number | null) => void;
   setAdditionalInsurancePercentage: (v: number | null) => void;
   setAdditionalInsuranceCoverage: (v: number | null) => void;
+  setSpecialCode: (id: number | null, code: string, name: string) => void;
   setDoctor: (id: number | null, name: string, medicalCode: string | null) => void;
   setAssistant: (id: number | null, name: string) => void;
   setBookingDate: (v: string | null) => void;
@@ -81,6 +85,9 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
   additionalInsuranceId: null,
   additionalInsurancePercentage: null,
   additionalInsuranceCoverage: null,
+  specialCodeId: null,
+  specialCodeValue: '',
+  specialCodeName: '',
   doctorId: null,
   doctorName: '',
   doctorMedicalCode: null,
@@ -109,6 +116,9 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
       additionalInsuranceId: null,
       additionalInsurancePercentage: null,
       additionalInsuranceCoverage: null,
+      specialCodeId: null,
+      specialCodeValue: '',
+      specialCodeName: '',
       doctorId: null,
       doctorName: '',
       doctorMedicalCode: null,
@@ -142,6 +152,7 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
           mobile_phone_number: detail.patient.mobile_phone_number,
           file_number: detail.patient.file_number,
           sex: detail.patient.sex,
+          is_foreign_national: detail.patient.is_foreign_national ?? false,
           isExisting: true,
         }
       : emptyPatient();
@@ -157,6 +168,9 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
       additionalInsuranceId: detail.additional_insurance_id,
       additionalInsurancePercentage: detail.additional_insurance_percentage,
       additionalInsuranceCoverage: detail.additional_insurance_coverage,
+      specialCodeId: detail.special_code_id,
+      specialCodeValue: detail.special_code_value ?? '',
+      specialCodeName: detail.special_code_name ?? '',
       doctorId: detail.doctor_id,
       doctorName: detail.doctor_name ?? '',
       doctorMedicalCode: detail.doctor_medical_code ?? null,
@@ -194,6 +208,8 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
     set({ additionalInsurancePercentage }),
   setAdditionalInsuranceCoverage: (additionalInsuranceCoverage) =>
     set({ additionalInsuranceCoverage }),
+  setSpecialCode: (specialCodeId, specialCodeValue, specialCodeName) =>
+    set({ specialCodeId, specialCodeValue, specialCodeName }),
   setDoctor: (doctorId, doctorName, doctorMedicalCode) =>
     set({ doctorId, doctorName, doctorMedicalCode }),
   setAssistant: (assistantId, assistantName) => set({ assistantId, assistantName }),

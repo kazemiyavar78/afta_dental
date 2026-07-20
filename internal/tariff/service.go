@@ -94,11 +94,9 @@ func (s *Service) CalculateTariff(
 			tariffAmount = int64(service.TechnicalCoefficient * float64(pkg.TechnicalCoefficient))
 			tariffAmount += int64(service.ProfessionalCoefficient * float64(pkg.TechnicalProfessionalCoefficient))
 			tariffAmount += int64(service.ConsumptionCoefficient * float64(pkg.ConsumptionCoefficient))
-
 			organizationAmount = int64(float64(tariffAmount) * float64(pkg.OrganizationPercentage) / 100)
 		}
-		fmt.Println("tariffAmount", tariffAmount)
-		fmt.Println("pkg.SupplementaryPercentage", pkg.SupplementaryPercentage)
+		
 		supplementaryAmount = int64(float64(amount) * float64(pkg.SupplementaryPercentage) / 100)
 		subsidyAmount := int64(float64(amount-organizationAmount) * float64(pkg.SubsidyPercentage) / 100)
 

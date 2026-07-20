@@ -7,38 +7,56 @@ import (
 
 // RegisterRoutes مسیرهای ماژول پذیرش را ثبت می‌کند.
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
-	roles := []string{"Admin", "Reception", "Doctor"}
-
 	r.GET("/reception",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.read"),
 		middleware.AuthorizationMiddleware(),
 		h.List)
 	r.GET("/reception/nav",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.read"),
 		middleware.AuthorizationMiddleware(),
 		h.Navigate)
 	r.POST("/reception/calculate",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.create", "reception.update"),
 		middleware.AuthorizationMiddleware(),
 		h.Calculate)
+	r.GET("/reception/patient/:patientId",
+		middleware.RequirePermission("reception.read"),
+		middleware.AuthorizationMiddleware(),
+		h.ListByPatient)
+	r.GET("/reception/patient/:patientId/services-history",
+		middleware.RequirePermission("reception.read"),
+		middleware.AuthorizationMiddleware(),
+		h.PatientServiceHistory)
 	r.POST("/reception",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.create"),
 		middleware.AuthorizationMiddleware(),
 		h.Create)
 	r.GET("/reception/:id",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.read"),
 		middleware.AuthorizationMiddleware(),
 		h.GetByID)
 	r.PUT("/reception/:id",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.update"),
 		middleware.AuthorizationMiddleware(),
 		h.Update)
 	r.DELETE("/reception/:id",
-		middleware.RequireRole(roles...),
+		middleware.RequirePermission("reception.delete"),
 		middleware.AuthorizationMiddleware(),
 		h.Delete)
 	r.POST("/reception/:id/restore",
-		middleware.RequireRole("Admin"),
+		middleware.RequirePermission("reception.restore"),
 		middleware.AuthorizationMiddleware(),
 		h.Restore)
+	r.POST("/reception/:id/end",
+		middleware.RequirePermission("reception.update"),
+		middleware.AuthorizationMiddleware(),
+		h.EndReception)
+	r.POST("/reception/:id/photos",
+		middleware.RequirePermission("reception.update"),
+		middleware.AuthorizationMiddleware(),
+		h.UploadPhoto)
+	r.GET("/reception/:id/photos/:photoId",
+		middleware.RequirePermission("reception.read"),
+		middleware.AuthorizationMiddleware(),
+		h.GetPhoto)
 }

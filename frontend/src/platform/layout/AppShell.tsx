@@ -15,6 +15,8 @@ import {
   InboxOutlined,
   SafetyCertificateOutlined,
   IdcardOutlined,
+  KeyOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -54,6 +56,9 @@ export function AppShell({ children }: AppShellProps) {
     },
     { key: '/services', icon: <AppstoreOutlined />, label: 'خدمات', permission: 'services.read' },
     { key: '/fund', icon: <DollarOutlined />, label: 'صندوق', permission: 'fund.read' },
+    { key: '/bank-accounts', icon: <BankOutlined />, label: 'حساب‌های بانکی', permission: 'bank_account.read' },
+    { key: '/special-codes', icon: <KeyOutlined />, label: 'کد خاص', permission: 'special_code.read' },
+    { key: '/regulations', icon: <AuditOutlined />, label: 'ضوابط', permission: 'regulation.read' },
     { key: '/tariff', icon: <TagsOutlined />, label: 'تعرفه', permission: 'tariff.read' },
     { key: '/logs', icon: <FileTextOutlined />, label: 'لاگ‌ها', permission: 'logs.read' },
 
@@ -134,7 +139,7 @@ export function AppShell({ children }: AppShellProps) {
             </Space>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 24, padding: 24, background: '#fff', borderRadius: 8 }}>
+        <Content style={{ margin: 16, padding: 16, background: '#fff', borderRadius: 8 }}>
           {children}
         </Content>
       </Layout>

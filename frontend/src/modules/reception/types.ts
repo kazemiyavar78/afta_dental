@@ -11,6 +11,7 @@ export type PatientFormState = {
   mobile_phone_number: string | null;
   file_number: string;
   sex: boolean;
+  is_foreign_national: boolean;
   /** بیمار از دیتابیس بارگذاری شده و فیلدهای هویتی قفل‌اند */
   isExisting: boolean;
 };
@@ -39,6 +40,9 @@ export type ReceptionDetail = {
   patient?: PatientFormState & { id: number };
   insurance_id: number | null;
   additional_insurance_id: number | null;
+  special_code_id: number | null;
+  special_code_name?: string;
+  special_code_value?: string;
   doctor_id: number | null;
   assistant_id: number | null;
   doctor_name?: string;
@@ -52,6 +56,8 @@ export type ReceptionDetail = {
   referral_code: number | null;
   additional_insurance_coverage: number | null;
   additional_insurance_percentage: number | null;
+  reception_ended: boolean;
+  photo_count: number;
   registered_by_id: number | null;
   services: Array<{
     id: number;
@@ -86,9 +92,11 @@ export type UpsertReceptionPayload = {
     mobile_phone_number?: string | null;
     file_number: string;
     sex: boolean;
+    is_foreign_national: boolean;
   };
   insurance_id: number | null;
   additional_insurance_id: number | null;
+  special_code_id: number | null;
   doctor_id: number | null;
   assistant_id: number | null;
   booking_date: string | null;
@@ -112,6 +120,7 @@ export type UpsertReceptionPayload = {
 export type CalculatePayload = {
   insurance_id: number | null;
   additional_insurance_id: number | null;
+  special_code_id: number | null;
   additional_insurance_coverage: number | null;
   additional_insurance_percentage: number | null;
   services: Array<{
@@ -150,6 +159,25 @@ export type DoctorUser = {
   user_type: string;
 };
 
+export type EndReceptionResult = {
+  success: boolean;
+  reception_ended: boolean;
+  previous_reception_id?: number | null;
+  regulation_descriptions?: string[];
+  required_photo_count: number;
+  uploaded_photo_count: number;
+  message: string;
+};
+
+export type PatientServiceHistoryItem = {
+  reception_id: number;
+  reception_date: string;
+  insurance_name: string;
+  additional_insurance_name: string;
+  cash_amount: number;
+  service_names: string[];
+};
+
 /** سهم صندوق یک سطر: نرخ − سهم سازمان − سهم تکمیلی − یارانه */
 export function lineCashAmount(line: {
   service_amount: number;
@@ -177,6 +205,7 @@ export function emptyPatient(): PatientFormState {
     mobile_phone_number: null,
     file_number: '',
     sex: true,
+    is_foreign_national: false,
     isExisting: false,
   };
 }

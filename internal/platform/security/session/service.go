@@ -84,8 +84,8 @@ func (s *Service) GetSession(id uuid.UUID) (*Session, error) {
 	return sess, nil
 }
 
-// DeleteSession نشست را فیزیکی حذف می‌کند.
-func (s *Service) DeleteSession(id uuid.UUID, actorUserID int, actorRole string, ip string) error {
+// DeleteSession نشست را فیزیکی حذف می‌کند. canManageOthers برای حذف نشست دیگران است.
+func (s *Service) DeleteSession(id uuid.UUID, actorUserID int, canManageOthers bool, ip string) error {
 	sess, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -94,7 +94,7 @@ func (s *Service) DeleteSession(id uuid.UUID, actorUserID int, actorRole string,
 		return apperror.New("DB_ERROR", "خطا در خواندن نشست.", err.Error(), 500)
 	}
 
-	if actorRole != "Admin" && sess.PersonnelAccountID != actorUserID {
+	if !canManageOthers && sess.PersonnelAccountID != actorUserID {
 		return apperror.ErrForbidden
 	}
 
@@ -109,9 +109,9 @@ func (s *Service) DeleteSession(id uuid.UUID, actorUserID int, actorRole string,
 	return nil
 }
 
-// ListSessions لیست نشست‌ها را برمی‌گرداند (Admin همه، کاربر فقط خودش).
-func (s *Service) ListSessions(actorUserID int, actorRole string) ([]Session, error) {
-	if actorRole == "Admin" {
+// ListSessions لیست نشست‌ها را برمی‌گرداند (با canListAll همه، وگرنه فقط خودش).
+func (s *Service) ListSessions(actorUserID int, canListAll bool) ([]Session, error) {
+	if canListAll {
 		return s.repo.FindAll()
 	}
 	return s.repo.FindByUserID(actorUserID)
