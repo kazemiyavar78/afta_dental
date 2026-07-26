@@ -95,3 +95,51 @@ func (h *Handler) Delete(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+// ListExcludedServices خدمات خارج‌شده یک سازمان را برمی‌گرداند.
+func (h *Handler) ListExcludedServices(c *gin.Context) {
+	var uri struct {
+		OrganizationID uint `uri:"organizationId" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	list, err := h.service.ListExcludedServicesByOrganization(uri.OrganizationID)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// AddExcludedServices خدمات را به لیست خارج‌شده سازمان اضافه می‌کند.
+func (h *Handler) AddExcludedServices(c *gin.Context) {
+	var req ExcludedServicesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	uid, _ := c.Get(middleware.ContextKeyUserID)
+	resp, err := h.service.AddExcludedServices(req, uid.(int), c.ClientIP())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
+}
+
+// RemoveExcludedServices خدمات را از لیست خارج‌شده سازمان حذف می‌کند.
+func (h *Handler) RemoveExcludedServices(c *gin.Context) {
+	var req ExcludedServicesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	uid, _ := c.Get(middleware.ContextKeyUserID)
+	if err := h.service.RemoveExcludedServices(req, uid.(int), c.ClientIP()); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}

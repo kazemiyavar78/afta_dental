@@ -44,6 +44,8 @@ const emptyFormValues: ServiceFormValues = {
   consumption_coefficient: 0,
   service_rate: 0,
   service_tariff: 0,
+  specialist_rate: 0,
+  specialist_tariff: 0,
   international_code: '',
   default_count: 0,
   maximum_count: 0,
@@ -86,6 +88,8 @@ export function ServicesPage() {
         consumption_coefficient: editing.consumption_coefficient,
         service_rate: editing.service_rate,
         service_tariff: editing.service_tariff,
+        specialist_rate: editing.specialist_rate,
+        specialist_tariff: editing.specialist_tariff,
         international_code: editing.international_code,
         default_count: editing.default_count,
         maximum_count: editing.maximum_count,
@@ -149,6 +153,8 @@ export function ServicesPage() {
     { title: 'نام', dataIndex: 'name', key: 'name' },
     { title: 'نرخ', dataIndex: 'service_rate', key: 'service_rate', width: 110 },
     { title: 'تعرفه', dataIndex: 'service_tariff', key: 'service_tariff', width: 110 },
+    { title: 'نرخ خصوصی', dataIndex: 'specialist_rate', key: 'specialist_rate', width: 110 },
+    { title: 'تعرفه خصوصی', dataIndex: 'specialist_tariff', key: 'specialist_tariff', width: 120 },
     {
       title: 'ویژگی',
       dataIndex: 'service_features',
@@ -308,6 +314,36 @@ export function ServicesPage() {
             <Form.Item label="تعرفه خدمت" validateStatus={errors.service_tariff ? 'error' : ''} help={errors.service_tariff?.message}>
               <Controller
                 name="service_tariff"
+                control={control}
+                render={({ field }) => (
+                  <InputNumber
+                    min={0}
+                    style={{ width: 160 }}
+                    value={field.value}
+                    onChange={(v) => field.onChange(v ?? 0)}
+                  />
+                )}
+              />
+            </Form.Item>
+          </Space>
+          <Space wrap size="large" style={{ display: 'flex', marginBottom: 8 }}>
+            <Form.Item label="نرخ پزشک خصوصی" validateStatus={errors.specialist_rate ? 'error' : ''} help={errors.specialist_rate?.message}>
+              <Controller
+                name="specialist_rate"
+                control={control}
+                render={({ field }) => (
+                  <InputNumber
+                    min={0}
+                    style={{ width: 160 }}
+                    value={field.value}
+                    onChange={(v) => field.onChange(v ?? 0)}
+                  />
+                )}
+              />
+            </Form.Item>
+            <Form.Item label="تعرفه پزشک خصوصی" validateStatus={errors.specialist_tariff ? 'error' : ''} help={errors.specialist_tariff?.message}>
+              <Controller
+                name="specialist_tariff"
                 control={control}
                 render={({ field }) => (
                   <InputNumber

@@ -8,6 +8,7 @@ export const organizationSchema = z.object({
   is_takmili: z.boolean(),
   is_active: z.boolean(),
   package_id: z.number().min(1, 'انتخاب بسته تعرفه الزامی است'),
+  center_package_id: z.number().min(1, 'انتخاب بسته مرکز الزامی است'),
 });
 
 export type OrganizationFormValues = z.infer<typeof organizationSchema>;

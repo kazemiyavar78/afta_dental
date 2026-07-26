@@ -6,7 +6,6 @@ import {
   PrinterOutlined,
   RollbackOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import { PermissionGuard } from '@/platform/auth/PermissionGuard';
 import { useAuth } from '@/platform/auth/useAuth';
 
@@ -21,7 +20,7 @@ type ActionButtonsProps = {
   onRestore?: () => void;
 };
 
-/** دکمه‌های عملیاتی پذیرش — اندازه یکسان و فشرده */
+/** دکمه‌های عملیاتی پذیرش — ذخیره / ویرایش / حذف / پرینت */
 export function ActionButtons({
   saving,
   canEdit,
@@ -32,7 +31,6 @@ export function ActionButtons({
   onDelete,
   onRestore,
 }: ActionButtonsProps) {
-  const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
   const canSave =
@@ -49,7 +47,7 @@ export function ActionButtons({
         </Button>
       )}
 
-      {!isNew && !deleted && (
+      {!isNew && !deleted && !canEdit && (
         <PermissionGuard permission="reception.update">
           <Button size="small" icon={<EditOutlined />} onClick={onEdit}>
             ویرایش
@@ -90,10 +88,6 @@ export function ActionButtons({
           پرینت
         </Button>
       </PermissionGuard>
-
-      <Button size="small" onClick={() => navigate('/')}>
-        بازگشت
-      </Button>
     </Space.Compact>
   );
 }

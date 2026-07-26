@@ -8,16 +8,17 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 	"github.com/tpdenta/afta-reception/internal/services"
+	"github.com/tpdenta/afta-reception/internal/user"
 	"gorm.io/gorm"
 )
 
 // Service لایه منطق کسب‌وکار تعرفه.
 type Service struct {
-	db                 *gorm.DB
-	repo               Repository
-	audit              *audit.Manager
+	db                  *gorm.DB
+	repo                Repository
+	audit               *audit.Manager
 	organizationService *organization.Service
-	serviceService     *services.Service
+	serviceService      *services.Service
 }
 
 // NewService نمونه Service تعرفه را با وابستگی به سازمان و خدمات می‌سازد.
@@ -60,7 +61,7 @@ func (s *Service) CalculateTariffForOrganization(req CalculateTariffForOrganizat
 		return nil, apperror.New("SERVICE_NOT_FOUND", "خدمات مورد نظر یافت نشد.", err.Error(), 404)
 	}
 
-	result, err := s.CalculateTariff(listServices, organizationResp, req)
+	result, err := s.CalculateTariff(listServices, organizationResp, req, user.UserTypeDoctor)
 	if err != nil {
 		return nil, apperror.New("CALCULATE_TARIFF_ERROR", "خطا در محاسبه تعرفه.", err.Error(), 500)
 	}
@@ -76,27 +77,45 @@ func (s *Service) CalculateTariff(
 	listServices []services.ServiceItem,
 	organizationResp *organization.Response,
 	req CalculateTariffForOrganizationRequest,
+	userType user.UserType,
 ) ([]ServiceWithPrice, error) {
 	var result []ServiceWithPrice
 	pkg := organizationResp.Package
 
 	for _, service := range listServices {
-		amount := int64(service.TechnicalCoefficient * float64(req.TechnicalAmount))
-		amount += int64(service.ProfessionalCoefficient * float64(req.ProfessionalCenterAmount))
-		amount += int64(service.ConsumptionCoefficient * float64(req.ConsumptionCenterAmount))
+		amount := int64(0)
+		tariffAmount := int64(0)
 
-		var tariffAmount int64
+		if userType == user.UserTypeSpecialist && service.ServiceRate == 0 && service.ServiceTariff == 0 {
+			//ضریب حرفه ای پزشک متخصص 15 درصد افزایش یافته است
+			service.TechnicalCoefficient *= 1.15
+		}
+
+		if service.TechnicalCoefficient <= 0 && service.ProfessionalCoefficient <= 0 {
+			amount = int64(service.ServiceRate)
+			tariffAmount = int64(service.ServiceTariff)
+		} else {
+			amount := int64(service.TechnicalCoefficient * float64(req.TechnicalAmount))
+			amount += int64(service.ProfessionalCoefficient * float64(req.ProfessionalCenterAmount))
+			amount += int64(service.ConsumptionCoefficient * float64(req.ConsumptionCenterAmount))
+		}
+
 		var organizationAmount int64
 		var supplementaryAmount int64
 
 		// اگر سازمان تکمیلی نباشد تعرفه و سهم سازمان و تکمیلی محاسبه نمی‌شود.
 		if !organizationResp.IsTakmili {
-			tariffAmount = int64(service.TechnicalCoefficient * float64(pkg.TechnicalCoefficient))
-			tariffAmount += int64(service.ProfessionalCoefficient * float64(pkg.TechnicalProfessionalCoefficient))
-			tariffAmount += int64(service.ConsumptionCoefficient * float64(pkg.ConsumptionCoefficient))
-			organizationAmount = int64(float64(tariffAmount) * float64(pkg.OrganizationPercentage) / 100)
+			if service.TechnicalCoefficient > 0 && service.ProfessionalCoefficient > 0 {
+				tariffAmount = int64(service.TechnicalCoefficient * float64(pkg.TechnicalCoefficient))
+				tariffAmount += int64(service.ProfessionalCoefficient * float64(pkg.TechnicalProfessionalCoefficient))
+				tariffAmount += int64(service.ConsumptionCoefficient * float64(pkg.ConsumptionCoefficient))
+				organizationAmount = int64(float64(tariffAmount) * float64(pkg.OrganizationPercentage) / 100)
+			} else {
+				tariffAmount = int64(service.SpecialistRate)
+				organizationAmount = int64(float64(tariffAmount) * float64(pkg.OrganizationPercentage) / 100)
+			}
 		}
-		
+
 		supplementaryAmount = int64(float64(amount) * float64(pkg.SupplementaryPercentage) / 100)
 		subsidyAmount := int64(float64(amount-organizationAmount) * float64(pkg.SubsidyPercentage) / 100)
 
@@ -265,7 +284,7 @@ func (s *Service) RecalculateTariff(id uint, req RecalculateTariffRequest, actor
 		ProfessionalCenterAmount: req.ProfessionalCenterAmount,
 		ConsumptionCenterAmount:  req.ConsumptionCenterAmount,
 	}
-	calculated, err := s.CalculateTariff([]services.ServiceItem{*serviceItem}, organizationResp, calcReq)
+	calculated, err := s.CalculateTariff([]services.ServiceItem{*serviceItem}, organizationResp, calcReq, user.UserTypeDoctor)
 	if err != nil || len(calculated) == 0 {
 		return nil, apperror.New("CALCULATE_TARIFF_ERROR", "خطا در محاسبه تعرفه.", "calculate failed", 500)
 	}

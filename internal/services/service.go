@@ -6,6 +6,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 	"github.com/tpdenta/afta-reception/internal/platform/security/encryption"
+	"github.com/tpdenta/afta-reception/internal/platform/security/integrity"
 	"gorm.io/gorm"
 )
 
@@ -21,11 +22,17 @@ type Service struct {
 	repo       Repository
 	audit      *audit.Manager
 	encryptSvc *encryption.ServiceEncryptionService
+	signer     *integrity.Signer
 }
 
 // NewService نمونه Service خدمات را می‌سازد.
-func NewService(db *gorm.DB, auditMgr *audit.Manager, encryptSvc *encryption.ServiceEncryptionService) *Service {
-	return &Service{repo: NewRepository(db), audit: auditMgr, encryptSvc: encryptSvc}
+func NewService(
+	db *gorm.DB,
+	auditMgr *audit.Manager,
+	encryptSvc *encryption.ServiceEncryptionService,
+	signer *integrity.Signer,
+) *Service {
+	return &Service{repo: NewRepository(db), audit: auditMgr, encryptSvc: encryptSvc, signer: signer}
 }
 
 // toSensitiveData مدل خدمت را به داده حساس رمزنگاری تبدیل می‌کند.
@@ -57,6 +64,8 @@ func toResponse(item *ServiceItem) *Response {
 		ConsumptionCoefficient:  item.ConsumptionCoefficient,
 		ServiceRate:             item.ServiceRate,
 		ServiceTariff:           item.ServiceTariff,
+		SpecialistRate:          item.SpecialistRate,
+		SpecialistTariff:        item.SpecialistTariff,
 		InternationalCode:       item.InternationalCode,
 		DefaultCount:            item.DefaultCount,
 		MaximumCount:            item.MaximumCount,
@@ -87,8 +96,9 @@ func (s *Service) verifyIntegrity(item *ServiceItem, actorID int, ip string) err
 }
 
 // applyRequest فیلدهای درخواست را روی مدل خدمت اعمال می‌کند.
+// SpecialistRate و SpecialistTariff در هش یکپارچگی لحاظ نمی‌شوند.
 func applyRequest(item *ServiceItem, code, name, intlCode,
-	features string, tech, prof, cons float64, rate, tariff int, defCount, maxCount int, isActive bool, hasDentalDirection, hasTooth, allowMultipleUse bool) {
+	features string, tech, prof, cons float64, rate, tariff, specialistRate, specialistTariff int, defCount, maxCount int, isActive bool, hasDentalDirection, hasTooth, allowMultipleUse bool) {
 	item.ServiceCode = code
 	item.Name = name
 	item.TechnicalCoefficient = tech
@@ -96,6 +106,8 @@ func applyRequest(item *ServiceItem, code, name, intlCode,
 	item.ConsumptionCoefficient = cons
 	item.ServiceRate = rate
 	item.ServiceTariff = tariff
+	item.SpecialistRate = specialistRate
+	item.SpecialistTariff = specialistTariff
 	item.InternationalCode = intlCode
 	item.DefaultCount = defCount
 	item.MaximumCount = maxCount
@@ -115,7 +127,8 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	item := &ServiceItem{}
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
+		req.ServiceRate, req.ServiceTariff, req.SpecialistRate, req.SpecialistTariff,
+		req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {
@@ -209,7 +222,8 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
-		req.ServiceRate, req.ServiceTariff, req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
+		req.ServiceRate, req.ServiceTariff, req.SpecialistRate, req.SpecialistTariff,
+		req.DefaultCount, req.MaximumCount, req.IsActive, req.IsDentalDirection, req.HasTooth, req.AllowMultipleUse)
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(item))
 	if err != nil {
@@ -242,5 +256,118 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در حذف خدمت.", err.Error(), 500)
 	}
 	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف خدمت %s", item.Name))
+	return nil
+}
+
+// toExcludedResponse مدل دامنه خدمت خارج‌شده را به DTO پاسخ تبدیل می‌کند.
+func toExcludedResponse(item *ExcludedService) ExcludedServiceResponse {
+	return ExcludedServiceResponse{
+		ID:             item.ID,
+		OrganizationID: item.OrganizationID,
+		ServiceID:      item.ServiceID,
+	}
+}
+
+// ListExcludedServicesByOrganization خدمات خارج‌شده یک سازمان را برمی‌گرداند.
+func (s *Service) ListExcludedServicesByOrganization(organizationID uint) ([]ExcludedServiceResponse, error) {
+	list, err := s.repo.FindByOrganizationID(organizationID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمات خارج‌شده.", err.Error(), 500)
+	}
+	result := make([]ExcludedServiceResponse, 0, len(list))
+	for i := range list {
+		result = append(result, toExcludedResponse(&list[i]))
+	}
+	return result, nil
+}
+
+// AddExcludedServices خدمات را به لیست خارج‌شده سازمان اضافه می‌کند و هش یکپارچگی را ثبت می‌کند.
+func (s *Service) AddExcludedServices(req ExcludedServicesRequest, actorID int, ip string) ([]ExcludedServiceResponse, error) {
+	if req.OrganizationID == 0 {
+		return nil, apperror.New("VALIDATION_ERROR", "شناسه سازمان الزامی است.", "organization_id required", 400)
+	}
+	if len(req.ServiceIDs) == 0 {
+		return nil, apperror.New("VALIDATION_ERROR", "حداقل یک خدمت باید انتخاب شود.", "service_ids required", 400)
+	}
+
+	result := make([]ExcludedServiceResponse, 0, len(req.ServiceIDs))
+	for _, serviceID := range req.ServiceIDs {
+		if serviceID == 0 {
+			return nil, apperror.New("VALIDATION_ERROR", "شناسه خدمت نامعتبر است.", "invalid service_id", 400)
+		}
+		if _, err := s.repo.FindByID(serviceID); err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil, apperror.New("VALIDATION_ERROR", "خدمت انتخاب‌شده یافت نشد.", "service not found", 400)
+			}
+			return nil, apperror.New("DB_ERROR", "خطا در بررسی خدمت.", err.Error(), 500)
+		}
+
+		existing, err := s.repo.FindExcludedIncludingDeleted(req.OrganizationID, serviceID)
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, apperror.New("DB_ERROR", "خطا در بررسی خدمت خارج‌شده.", err.Error(), 500)
+		}
+
+		if err == nil {
+			if existing.DeletedAt.Valid {
+				existing.OrganizationID = req.OrganizationID
+				existing.ServiceID = serviceID
+				existing.IntegrityHash = SignExcludedServiceIntegrityHash(s.signer, existing)
+				if err := s.repo.RestoreExcludedService(existing); err != nil {
+					return nil, apperror.New("DB_ERROR", "خطا در بازیابی خدمت خارج‌شده.", err.Error(), 500)
+				}
+			} else if !VerifyExcludedServiceIntegrity(s.signer, existing) {
+				_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
+					fmt.Sprintf("نقض یکپارچگی خدمت خارج‌شده سازمان %d خدمت %d", req.OrganizationID, serviceID))
+				return nil, apperror.ErrIntegrity
+			}
+			result = append(result, toExcludedResponse(existing))
+			continue
+		}
+
+		item := &ExcludedService{
+			OrganizationID: req.OrganizationID,
+			ServiceID:      serviceID,
+		}
+		item.IntegrityHash = SignExcludedServiceIntegrityHash(s.signer, item)
+		if err := s.repo.CreateExcludedService(item); err != nil {
+			return nil, apperror.New("DB_ERROR", "خطا در افزودن خدمت خارج‌شده.", err.Error(), 500)
+		}
+		result = append(result, toExcludedResponse(item))
+	}
+
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("افزودن %d خدمت خارج‌شده برای سازمان %d", len(req.ServiceIDs), req.OrganizationID))
+	return result, nil
+}
+
+// RemoveExcludedServices خدمات را از لیست خارج‌شده سازمان حذف می‌کند.
+func (s *Service) RemoveExcludedServices(req ExcludedServicesRequest, actorID int, ip string) error {
+	if req.OrganizationID == 0 {
+		return apperror.New("VALIDATION_ERROR", "شناسه سازمان الزامی است.", "organization_id required", 400)
+	}
+	if len(req.ServiceIDs) == 0 {
+		return apperror.New("VALIDATION_ERROR", "حداقل یک خدمت باید انتخاب شود.", "service_ids required", 400)
+	}
+
+	for _, serviceID := range req.ServiceIDs {
+		item, err := s.repo.FindByOrganizationIDAndServiceID(req.OrganizationID, serviceID)
+		if err == gorm.ErrRecordNotFound {
+			continue
+		}
+		if err != nil {
+			return apperror.New("DB_ERROR", "خطا در خواندن خدمت خارج‌شده.", err.Error(), 500)
+		}
+		if !VerifyExcludedServiceIntegrity(s.signer, item) {
+			_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
+				fmt.Sprintf("نقض یکپارچگی خدمت خارج‌شده سازمان %d خدمت %d", req.OrganizationID, serviceID))
+			return apperror.ErrIntegrity
+		}
+		if err := s.repo.RemoveExcludedService(req.OrganizationID, serviceID); err != nil {
+			return apperror.New("DB_ERROR", "خطا در حذف خدمت خارج‌شده.", err.Error(), 500)
+		}
+	}
+
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("حذف %d خدمت خارج‌شده برای سازمان %d", len(req.ServiceIDs), req.OrganizationID))
 	return nil
 }

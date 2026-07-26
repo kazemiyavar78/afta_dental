@@ -9,6 +9,8 @@ export const serviceSchema = z.object({
   consumption_coefficient: z.number().min(0, 'نباید منفی باشد'),
   service_rate: z.number().min(0, 'نباید منفی باشد'),
   service_tariff: z.number().min(0, 'نباید منفی باشد'),
+  specialist_rate: z.number().min(0, 'نباید منفی باشد'),
+  specialist_tariff: z.number().min(0, 'نباید منفی باشد'),
   international_code: z.string().max(20, 'حداکثر ۲۰ کاراکتر'),
   default_count: z.number().int('باید عدد صحیح باشد').min(0, 'نباید منفی باشد'),
   maximum_count: z.number().int('باید عدد صحیح باشد').min(0, 'نباید منفی باشد'),

@@ -37,6 +37,7 @@ export function OrganizationFormPage() {
       is_takmili: false,
       is_active: true,
       package_id: 0,
+      center_package_id: 0,
     },
   });
 
@@ -47,6 +48,7 @@ export function OrganizationFormPage() {
         is_takmili: existing.is_takmili,
         is_active: existing.is_active,
         package_id: existing.package_id,
+        center_package_id: existing.center_package_id,
       });
     }
   }, [existing, reset]);
@@ -102,6 +104,25 @@ export function OrganizationFormPage() {
                   {...field}
                   options={packageOptions}
                   placeholder="انتخاب بسته تعرفه"
+                  showSearch
+                  optionFilterProp="label"
+                />
+              )}
+            />
+          </Form.Item>
+          <Form.Item
+            label="بسته مرکز"
+            validateStatus={errors.center_package_id ? 'error' : ''}
+            help={errors.center_package_id?.message}
+          >
+            <Controller
+              name="center_package_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  {...field}
+                  options={packageOptions}
+                  placeholder="انتخاب بسته مرکز"
                   showSearch
                   optionFilterProp="label"
                 />

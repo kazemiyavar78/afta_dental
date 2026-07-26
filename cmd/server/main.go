@@ -78,6 +78,10 @@ func main() {
 	// 	&wallet.Transaction{},
 	// })
 
+	if err := organization.EnsureCenterPackageColumn(database); err != nil {
+		log.Printf("هشدار مهاجرت CenterPackageID: %v", err)
+	}
+
 	if err := migrate.Migrate(database, []interface{}{
 		&user.User{},
 		&organizationpackage.OrganizationPackage{},
@@ -85,6 +89,7 @@ func main() {
 		&organization.Organization{},
 		&patient.Patient{},
 		&services.ServiceItem{},
+		&services.ExcludedService{},
 		&fund.Fund{},
 		&tariff.Tariff{},
 		&reception.Reception{},
@@ -179,6 +184,9 @@ func main() {
 	organizationpackage.RegisterRoutes(api, orgPackageHandler)
 
 	orgSvc := organization.NewService(database, auditMgr, orgEncryptSvc, orgPackageSvc)
+	if err := orgSvc.FixIntegrityHashes(); err != nil {
+		log.Printf("هشدار: اصلاح هش یکپارچگی سازمان‌ها: %v", err)
+	}
 	orgHandler := organization.NewHandler(orgSvc)
 	organization.RegisterRoutes(api, orgHandler)
 
@@ -188,7 +196,7 @@ func main() {
 	patient.RegisterRoutes(api, patientHandler)
 
 	svcEncryptSvc := encryption.NewServiceEncryptionService(encryptor)
-	servicesSvc := services.NewService(database, auditMgr, svcEncryptSvc)
+	servicesSvc := services.NewService(database, auditMgr, svcEncryptSvc, signer)
 	servicesHandler := services.NewHandler(servicesSvc)
 	services.RegisterRoutes(api, servicesHandler)
 

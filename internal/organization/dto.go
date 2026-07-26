@@ -7,29 +7,34 @@ import (
 
 // CreateRequest بدنه ایجاد سازمان.
 type CreateRequest struct {
-	Name      string `json:"name" binding:"required"`
-	IsTakmili bool   `json:"is_takmili"`
-	IsActive  bool   `json:"is_active"`
-	PackageID uint   `json:"package_id" binding:"required"`
+	Name            string `json:"name" binding:"required"`
+	IsTakmili       bool   `json:"is_takmili"`
+	IsActive        bool   `json:"is_active"`
+	PackageID       uint   `json:"package_id" binding:"required"`
+	CenterPackageID uint   `json:"center_package_id" binding:"required"`
 }
 
 // UpdateRequest بدنه بروزرسانی سازمان.
 type UpdateRequest struct {
-	Name      string `json:"name" binding:"required"`
-	IsTakmili bool   `json:"is_takmili"`
-	IsActive  bool   `json:"is_active"`
-	PackageID uint   `json:"package_id" binding:"required"`
+	Name            string `json:"name" binding:"required"`
+	IsTakmili       bool   `json:"is_takmili"`
+	IsActive        bool   `json:"is_active"`
+	PackageID       uint   `json:"package_id" binding:"required"`
+	CenterPackageID uint   `json:"center_package_id" binding:"required"`
 }
 
 // Response پاسخ API سازمان.
 type Response struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	IsTakmili   bool   `json:"is_takmili"`
-	IsActive    bool   `json:"is_active"`
-	PackageID   uint   `json:"package_id"`
-	PackageName string `json:"package_name,omitempty"`
+	ID                uint   `json:"id"`
+	Name              string `json:"name"`
+	IsTakmili         bool   `json:"is_takmili"`
+	IsActive          bool   `json:"is_active"`
+	PackageID         uint   `json:"package_id"`
+	PackageName       string `json:"package_name,omitempty"`
+	CenterPackageID   uint   `json:"center_package_id"`
+	CenterPackageName string `json:"center_package_name,omitempty"`
 
-	// Package فقط برای مصرف داخلی لایه سرویس (مثلاً محاسبه تعرفه)؛ در JSON ارسال نمی‌شود.
-	Package organizationpackage.OrganizationPackage `json:"-"`
+	// Package و CenterPackage فقط برای مصرف داخلی لایه سرویس؛ در JSON ارسال نمی‌شوند.
+	Package       organizationpackage.OrganizationPackage `json:"-"`
+	CenterPackage organizationpackage.OrganizationPackage `json:"-"`
 }

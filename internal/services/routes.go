@@ -12,4 +12,8 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 	r.GET("/services/:id", middleware.RequirePermission("services.read"), middleware.AuthorizationMiddleware(), h.GetByID)
 	r.PUT("/services/:id", middleware.RequirePermission("services.update"), middleware.AuthorizationMiddleware(), h.Update)
 	r.DELETE("/services/:id", middleware.RequirePermission("services.delete"), middleware.AuthorizationMiddleware(), h.Delete)
+
+	r.GET("/excluded-services/organization/:organizationId", middleware.RequirePermission("excluded_services.read"), middleware.AuthorizationMiddleware(), h.ListExcludedServices)
+	r.POST("/excluded-services", middleware.RequirePermission("excluded_services.add"), middleware.AuthorizationMiddleware(), h.AddExcludedServices)
+	r.DELETE("/excluded-services", middleware.RequirePermission("excluded_services.remove"), middleware.AuthorizationMiddleware(), h.RemoveExcludedServices)
 }

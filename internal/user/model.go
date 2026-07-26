@@ -12,6 +12,8 @@ const (
 	UserTypeUser      UserType = "User"
 	UserTypeDoctor    UserType = "Doctor"
 	UserTypeAssistant UserType = "Assistant"
+	//پزشک متخصص
+	UserTypeSpecialist UserType = "Specialist"
 )
 
 // User مدل جدول کاربران (PersonnelAccount).

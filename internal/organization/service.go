@@ -37,37 +37,41 @@ func NewService(
 // toSensitiveData مدل سازمان را به داده حساس رمزنگاری تبدیل می‌کند.
 func toSensitiveData(o *Organization) encryption.OrganizationSensitiveData {
 	return encryption.OrganizationSensitiveData{
-		Name:      o.Name,
-		IsTakmili: o.IsTakmili,
-		IsActive:  o.IsActive,
-		PackageID: o.PackageID,
+		Name:            o.Name,
+		IsTakmili:       o.IsTakmili,
+		IsActive:        o.IsActive,
+		PackageID:       o.PackageID,
+		CenterPackageID: o.CenterPackageID,
 	}
 }
 
-// toResponse مدل دامنه را به DTO پاسخ تبدیل می‌کند و بسته preload‌شده را برای محاسبات داخلی نگه می‌دارد.
+// toResponse مدل دامنه را به DTO پاسخ تبدیل می‌کند و بسته‌های preload‌شده را برای محاسبات داخلی نگه می‌دارد.
 func toResponse(o *Organization) *Response {
 	return &Response{
-		ID:          o.ID,
-		Name:        o.Name,
-		IsTakmili:   o.IsTakmili,
-		IsActive:    o.IsActive,
-		PackageID:   o.PackageID,
-		PackageName: o.Package.PackageName,
-		Package:     o.Package,
+		ID:                o.ID,
+		Name:              o.Name,
+		IsTakmili:         o.IsTakmili,
+		IsActive:          o.IsActive,
+		PackageID:         o.PackageID,
+		PackageName:       o.Package.PackageName,
+		CenterPackageID:   o.CenterPackageID,
+		CenterPackageName: o.CenterPackage.PackageName,
+		Package:           o.Package,
+		CenterPackage:     o.CenterPackage,
 	}
 }
 
-// ensurePackageExists وجود بسته تعرفه را برای انتصاب بررسی می‌کند.
-func (s *Service) ensurePackageExists(packageID uint) error {
+// ensurePackageExists وجود بسته را برای انتصاب بررسی می‌کند.
+func (s *Service) ensurePackageExists(packageID uint, requiredMsg, notFoundMsg string) error {
 	if packageID == 0 {
-		return apperror.New("VALIDATION_ERROR", "انتخاب بسته تعرفه الزامی است.", "package_id required", 400)
+		return apperror.New("VALIDATION_ERROR", requiredMsg, "package_id required", 400)
 	}
 	exists, err := s.packageSvc.Exists(int(packageID))
 	if err != nil {
-		return apperror.New("DB_ERROR", "خطا در بررسی بسته تعرفه.", err.Error(), 500)
+		return apperror.New("DB_ERROR", "خطا در بررسی بسته.", err.Error(), 500)
 	}
 	if !exists {
-		return apperror.New("VALIDATION_ERROR", "بسته تعرفه انتخاب‌شده یافت نشد.", "package not found", 400)
+		return apperror.New("VALIDATION_ERROR", notFoundMsg, "package not found", 400)
 	}
 	return nil
 }
@@ -82,17 +86,21 @@ func (s *Service) verifyIntegrity(o *Organization, actorID int, ip string) error
 	return nil
 }
 
-// Create سازمان جدید می‌سازد، بسته را منتسب می‌کند و هش امنیتی آن را تولید می‌کند.
+// Create سازمان جدید می‌سازد، بسته‌ها را منتسب می‌کند و هش امنیتی آن را تولید می‌کند.
 func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
-	if err := s.ensurePackageExists(req.PackageID); err != nil {
+	if err := s.ensurePackageExists(req.PackageID, "انتخاب بسته تعرفه الزامی است.", "بسته تعرفه انتخاب‌شده یافت نشد."); err != nil {
+		return nil, err
+	}
+	if err := s.ensurePackageExists(req.CenterPackageID, "انتخاب بسته مرکز الزامی است.", "بسته مرکز انتخاب‌شده یافت نشد."); err != nil {
 		return nil, err
 	}
 
 	o := &Organization{
-		Name:      req.Name,
-		IsTakmili: req.IsTakmili,
-		IsActive:  req.IsActive,
-		PackageID: req.PackageID,
+		Name:            req.Name,
+		IsTakmili:       req.IsTakmili,
+		IsActive:        req.IsActive,
+		PackageID:       req.PackageID,
+		CenterPackageID: req.CenterPackageID,
 	}
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
@@ -138,9 +146,12 @@ func (s *Service) List() ([]Response, error) {
 	return result, nil
 }
 
-// Update پس از تایید هش یکپارچگی، سازمان را بروزرسانی (شامل انتصاب بسته) و هش جدید تولید می‌کند.
+// Update پس از تایید هش یکپارچگی، سازمان را بروزرسانی (شامل انتصاب بسته‌ها) و هش جدید تولید می‌کند.
 func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
-	if err := s.ensurePackageExists(req.PackageID); err != nil {
+	if err := s.ensurePackageExists(req.PackageID, "انتخاب بسته تعرفه الزامی است.", "بسته تعرفه انتخاب‌شده یافت نشد."); err != nil {
+		return nil, err
+	}
+	if err := s.ensurePackageExists(req.CenterPackageID, "انتخاب بسته مرکز الزامی است.", "بسته مرکز انتخاب‌شده یافت نشد."); err != nil {
 		return nil, err
 	}
 
@@ -160,6 +171,7 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	o.IsTakmili = req.IsTakmili
 	o.IsActive = req.IsActive
 	o.PackageID = req.PackageID
+	o.CenterPackageID = req.CenterPackageID
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
 	if err != nil {
@@ -197,5 +209,50 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در حذف سازمان.", err.Error(), 500)
 	}
 	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف سازمان %s", o.Name))
+	return nil
+}
+
+// FixIntegrityHashes پس از تغییر فرمول هش (مثلاً افزودن فیلد)، رکوردهای معتبر قدیمی را با فرمول جدید به‌روز می‌کند.
+// فقط سازمان‌هایی مهاجرت می‌شوند که هش خالی دارند یا هنوز با فرمول legacy معتبرند؛ دستکاری واقعی دست‌نخورده می‌ماند.
+func (s *Service) FixIntegrityHashes() error {
+	list, err := s.repo.FindAll()
+	if err != nil {
+		return err
+	}
+
+	for i := range list {
+		o := &list[i]
+		changed := false
+
+		// پر کردن CenterPackageID برای رکوردهای قبل از افزودن ستون
+		if o.CenterPackageID == 0 && o.PackageID != 0 {
+			o.CenterPackageID = o.PackageID
+			changed = true
+		}
+
+		if s.encryptSvc.CheckUserSecurityCode(toSensitiveData(o), o.IntegrityHash) {
+			if changed {
+				if err := s.repo.Update(o); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		legacyOK := o.IntegrityHash != "" && s.encryptSvc.CheckUserSecurityCodeLegacy(toSensitiveData(o), o.IntegrityHash)
+		if o.IntegrityHash != "" && !legacyOK {
+			// هش نه با فرمول جدید و نه قدیمی جور است → احتمال دستکاری؛ مهاجرت نکن
+			continue
+		}
+
+		integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
+		if err != nil {
+			return err
+		}
+		o.IntegrityHash = integrityHash
+		if err := s.repo.Update(o); err != nil {
+			return err
+		}
+	}
 	return nil
 }

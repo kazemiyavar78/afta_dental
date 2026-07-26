@@ -17,8 +17,11 @@ type Organization struct {
 	IntegrityHash string `gorm:"column:IntegrityHash;size:128;not null"`
 	// بسته تعرفه منتصب
 	PackageID uint `gorm:"column:PackageID;not null;index"`
+	// بسته مرکز
+	CenterPackageID uint `gorm:"column:CenterPackageID;not null;index"`
 
-	Package organizationpackage.OrganizationPackage `gorm:"foreignKey:PackageID"`
+	Package       organizationpackage.OrganizationPackage `gorm:"foreignKey:PackageID"`
+	CenterPackage organizationpackage.OrganizationPackage `gorm:"foreignKey:CenterPackageID"`
 }
 
 // TableName نام جدول سازمان‌ها را برمی‌گرداند.
@@ -42,24 +45,24 @@ func NewRepository(db *gorm.DB) Repository { return &gormRepo{db: db} }
 // Create سازمان جدید را در دیتابیس ذخیره می‌کند.
 func (r *gormRepo) Create(o *Organization) error { return r.db.Create(o).Error }
 
-// FindByID سازمان را با شناسه برمی‌گرداند (همراه با بسته).
+// FindByID سازمان را با شناسه برمی‌گرداند (همراه با بسته‌ها).
 func (r *gormRepo) FindByID(id uint) (*Organization, error) {
 	var o Organization
-	err := r.db.Preload("Package").Where("ID = ?", id).First(&o).Error
+	err := r.db.Preload("Package").Preload("CenterPackage").Where("ID = ?", id).First(&o).Error
 	return &o, err
 }
 
-// FindAll همه سازمان‌ها را به ترتیب نزولی شناسه برمی‌گرداند (همراه با بسته).
+// FindAll همه سازمان‌ها را به ترتیب نزولی شناسه برمی‌گرداند (همراه با بسته‌ها).
 func (r *gormRepo) FindAll() ([]Organization, error) {
 	var list []Organization
-	err := r.db.Preload("Package").Order("ID DESC").Find(&list).Error
+	err := r.db.Preload("Package").Preload("CenterPackage").Order("ID DESC").Find(&list).Error
 	return list, err
 }
 
 // GetActive سازمان‌های فعال را برمی‌گرداند.
 func (r *gormRepo) GetActive() ([]Organization, error) {
 	var list []Organization
-	err := r.db.Preload("Package").Where("IsActive = ?", true).Order("ID DESC").Find(&list).Error
+	err := r.db.Preload("Package").Preload("CenterPackage").Where("IsActive = ?", true).Order("ID DESC").Find(&list).Error
 	return list, err
 }
 

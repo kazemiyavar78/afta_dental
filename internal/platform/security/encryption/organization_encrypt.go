@@ -8,10 +8,11 @@ import (
 
 // OrganizationSensitiveData فیلدهای حساس سازمان برای محاسبه هش یکپارچگی.
 type OrganizationSensitiveData struct {
-	Name      string
-	IsTakmili bool
-	IsActive  bool
-	PackageID uint
+	Name            string
+	IsTakmili       bool
+	IsActive        bool
+	PackageID       uint
+	CenterPackageID uint
 }
 
 // OrganizationEncryptionService سرویس رمزنگاری و IntegrityHash سازمان.
@@ -25,6 +26,12 @@ func NewOrganizationEncryptionService(encryptor *Encryptor) *OrganizationEncrypt
 }
 
 func (s *OrganizationEncryptionService) sensitiveFields(data OrganizationSensitiveData) string {
+	return fmt.Sprintf("%s|%t|%t|%d|%d",
+		data.Name, data.IsTakmili, data.IsActive, data.PackageID, data.CenterPackageID)
+}
+
+// sensitiveFieldsLegacy فرمول هش قبل از افزودن CenterPackageID (برای مهاجرت امن).
+func (s *OrganizationEncryptionService) sensitiveFieldsLegacy(data OrganizationSensitiveData) string {
 	return fmt.Sprintf("%s|%t|%t|%d",
 		data.Name, data.IsTakmili, data.IsActive, data.PackageID)
 }
@@ -36,8 +43,18 @@ func (s *OrganizationEncryptionService) CreateSecurityCode(data OrganizationSens
 	return s.encryptor.Encrypt(plaintext)
 }
 
-// CheckUserSecurityCode یکپارچگی IntegrityHash سازمان را بررسی می‌کند.
+// CheckUserSecurityCode یکپارچگی IntegrityHash سازمان را با فرمول فعلی بررسی می‌کند.
 func (s *OrganizationEncryptionService) CheckUserSecurityCode(data OrganizationSensitiveData, securityCode string) bool {
+	return s.checkSecurityCode(s.sensitiveFields(data), securityCode)
+}
+
+// CheckUserSecurityCodeLegacy یکپارچگی را با فرمول قدیمی (بدون CenterPackageID) بررسی می‌کند.
+func (s *OrganizationEncryptionService) CheckUserSecurityCodeLegacy(data OrganizationSensitiveData, securityCode string) bool {
+	return s.checkSecurityCode(s.sensitiveFieldsLegacy(data), securityCode)
+}
+
+// checkSecurityCode هش داده‌شده را با مقدار رمزگشایی‌شده مقایسه می‌کند.
+func (s *OrganizationEncryptionService) checkSecurityCode(fields, securityCode string) bool {
 	if securityCode == "" {
 		return false
 	}
@@ -47,7 +64,7 @@ func (s *OrganizationEncryptionService) CheckUserSecurityCode(data OrganizationS
 		return false
 	}
 
-	hash := sha256.Sum256([]byte(s.sensitiveFields(data)))
+	hash := sha256.Sum256([]byte(fields))
 	expected := hex.EncodeToString(hash[:])
 	return decrypted == expected
 }

@@ -9,6 +9,8 @@ export type ServiceItem = {
   consumption_coefficient: number;
   service_rate: number;
   service_tariff: number;
+  specialist_rate: number;
+  specialist_tariff: number;
   international_code: string;
   default_count: number;
   maximum_count: number;
@@ -27,6 +29,8 @@ export type ServicePayload = {
   consumption_coefficient: number;
   service_rate: number;
   service_tariff: number;
+  specialist_rate: number;
+  specialist_tariff: number;
   international_code: string;
   default_count: number;
   maximum_count: number;

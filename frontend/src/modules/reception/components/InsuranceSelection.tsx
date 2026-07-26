@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchOrganizations } from '@/modules/organization/api';
 import { fetchSpecialCodeByCode } from '@/modules/special-codes/api';
 import { useReceptionStore } from '../store/receptionStore';
+import { JalaliDatePicker } from '@/platform/components/JalaliDatePicker/JalaliDatePicker';
 
 export type InsuranceRecalcOverrides = {
   insurance_id?: number | null;
@@ -36,13 +37,21 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
   const setPercentage = useReceptionStore((s) => s.setAdditionalInsurancePercentage);
   const setCoverage = useReceptionStore((s) => s.setAdditionalInsuranceCoverage);
   const setSpecialCode = useReceptionStore((s) => s.setSpecialCode);
+  const setBookingDate = useReceptionStore((s) => s.setBookingDate);
+  const bookingDate = useReceptionStore((s) => s.bookingDate);
+  const requestBookingDateFocus = useReceptionStore((s) => s.requestBookingDateFocus);
+  const referralCode = useReceptionStore((s) => s.referralCode);
+
+
+  const setReferralCode = useReceptionStore((s) => s.setReferralCode);
 
   const [codeDraft, setCodeDraft] = useState(specialCodeValue);
   const baseRef = useRef<HTMLDivElement>(null);
   const suppRef = useRef<HTMLDivElement>(null);
   const percentageRef = useRef<HTMLDivElement>(null);
   const coverageRef = useRef<HTMLDivElement>(null);
-
+  const bookingDateRef = useRef<HTMLDivElement>(null);
+  const referralWrapRef = useRef<HTMLDivElement>(null);
   const { data: organizationsData } = useQuery({
     queryKey: ['organizations'],
     queryFn: fetchOrganizations,
@@ -201,6 +210,31 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
               {specialCodeName || '—'}
             </Typography.Text>
           </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item label="اعتبار دفترچه" style={{ marginBottom: 8 }}>
+            <JalaliDatePicker
+              value={bookingDate}
+              disabled={!editing}
+              style={{ width: '100%' }}
+              onChange={(v) => {
+                setBookingDate(v || null);
+                window.setTimeout(() => focusField(bookingDateRef.current), 0);
+              }}
+            />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <div ref={referralWrapRef}>
+            <Form.Item label="کد معرفی‌نامه" style={{ marginBottom: 0 }}>
+              <InputNumber
+                style={{ width: '100%' }}
+                disabled={!editing}
+                value={referralCode ?? undefined}
+                onChange={(v) => setReferralCode(v == null ? null : Number(v))}
+              />
+            </Form.Item>
+          </div>
         </Col>
       </Row>
     </Form>

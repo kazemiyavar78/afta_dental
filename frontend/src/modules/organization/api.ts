@@ -3,6 +3,8 @@
 import { httpClient } from '@/platform/api/httpClient';
 import type {
   CreateOrganizationPayload,
+  ExcludedService,
+  ExcludedServicesPayload,
   Organization,
   UpdateOrganizationPayload,
 } from './types';
@@ -37,4 +39,25 @@ export async function updateOrganization(
 /** حذف سازمان */
 export async function deleteOrganization(id: number): Promise<void> {
   await httpClient.delete(`/organization/${id}`);
+}
+
+/** دریافت خدمات خارج‌شده یک سازمان */
+export async function fetchExcludedServices(organizationId: number): Promise<ExcludedService[]> {
+  const { data } = await httpClient.get<ExcludedService[] | null>(
+    `/excluded-services/organization/${organizationId}`,
+  );
+  return data ?? [];
+}
+
+/** افزودن خدمات خارج‌شده برای سازمان */
+export async function addExcludedServices(
+  payload: ExcludedServicesPayload,
+): Promise<ExcludedService[]> {
+  const { data } = await httpClient.post<ExcludedService[]>('/excluded-services', payload);
+  return data;
+}
+
+/** حذف خدمات خارج‌شده سازمان */
+export async function removeExcludedServices(payload: ExcludedServicesPayload): Promise<void> {
+  await httpClient.delete('/excluded-services', { data: payload });
 }

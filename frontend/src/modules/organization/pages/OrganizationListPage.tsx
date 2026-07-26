@@ -1,7 +1,8 @@
 // این ماژول نمونه است؛ باقی فیلدها/صفحات طبق همین الگو در فازهای بعدی اضافه می‌شوند.
 
+import { useState } from 'react';
 import { Button, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, StopOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import { PageHeader } from '@/platform/components/PageHeader';
@@ -11,11 +12,14 @@ import { confirmDialog } from '@/platform/components/ConfirmDialog';
 import { useApiQuery } from '@/platform/hooks/useApiQuery';
 import { useApiMutation } from '@/platform/hooks/useApiMutation';
 import { deleteOrganization, fetchOrganizations } from '../api';
+import { ExcludedServicesModal } from '../components/ExcludedServicesModal';
 import type { Organization } from '../types';
 
 /** صفحه لیست سازمان‌ها */
 export function OrganizationListPage() {
   const navigate = useNavigate();
+  const [excludedOrg, setExcludedOrg] = useState<Organization | null>(null);
+
   const { data = [], isLoading, refetch } = useApiQuery({
     queryKey: ['organizations'],
     queryFn: fetchOrganizations,
@@ -31,6 +35,7 @@ export function OrganizationListPage() {
     { title: 'شناسه', dataIndex: 'id', key: 'id', width: 80 },
     { title: 'نام', dataIndex: 'name', key: 'name' },
     { title: 'بسته تعرفه', dataIndex: 'package_name', key: 'package_name' },
+    { title: 'بسته مرکز', dataIndex: 'center_package_name', key: 'center_package_name' },
     {
       title: 'نوع',
       key: 'type',
@@ -52,7 +57,7 @@ export function OrganizationListPage() {
     {
       title: 'عملیات',
       key: 'actions',
-      width: 220,
+      width: 340,
       render: (_, record) => (
         <>
           <PermissionGuard permission="organization.update">
@@ -62,6 +67,15 @@ export function OrganizationListPage() {
               onClick={() => navigate(`/organization/${record.id}/edit`)}
             >
               ویرایش
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="excluded_services.read">
+            <Button
+              type="link"
+              icon={<StopOutlined />}
+              onClick={() => setExcludedOrg(record)}
+            >
+              خدمات خارج‌شده
             </Button>
           </PermissionGuard>
           <PermissionGuard permission="organization.delete">
@@ -100,6 +114,11 @@ export function OrganizationListPage() {
         }
       />
       <DataTable columns={columns} data={data} loading={isLoading} rowKey="id" />
+      <ExcludedServicesModal
+        organization={excludedOrg}
+        open={excludedOrg != null}
+        onClose={() => setExcludedOrg(null)}
+      />
     </>
   );
 }

@@ -29,6 +29,7 @@ const emptyFormValues: RoleFormValues = {
 /** برچسب فارسی ماژول‌ها بر اساس پیشوند نام مجوز */
 const MODULE_LABELS: Record<string, string> = {
   bank_account: 'حساب بانکی',
+  excluded_services: 'خدمات خارج‌شده',
   fund: 'صندوق',
   logs: 'لاگ‌ها',
   organization: 'سازمان',
@@ -382,10 +383,7 @@ export function RolesPage() {
                     <div key={group.module} style={{ marginBottom: 12 }}>
                       <Divider plain style={{ margin: '8px 0' }}>
                         <Typography.Text strong>
-                          {group.label}{' '}
-                          <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
-                            ({group.module})
-                          </Typography.Text>
+                          {group.label }{' '}
                         </Typography.Text>
                       </Divider>
                       <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -399,8 +397,8 @@ export function RolesPage() {
                               disabled={disabled}
                               onChange={(e) => togglePermission(p, e.target.checked, selectedIds)}
                             >
-                              {p.description || p.name}{' '}
-                              <Typography.Text type="secondary">({p.name})</Typography.Text>
+                              
+                              <Typography.Text type="secondary">({p.description})</Typography.Text>
                             </Checkbox>
                           );
                         })}

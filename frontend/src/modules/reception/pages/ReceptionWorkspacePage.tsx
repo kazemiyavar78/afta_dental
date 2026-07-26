@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Col,
   Divider,
   Dropdown,
   Flex,
-  Form,
   Input,
   Row,
   Space,
@@ -43,10 +43,11 @@ import {
 import { DoctorSelection } from '../components/DoctorSelection';
 import { ServicesTable } from '../components/ServicesTable';
 import { ActionButtons } from '../components/ActionButtons';
+import { ReceptionTotalsBar } from '../components/ReceptionTotalsBar';
 import { PatientServicesHistoryModal } from '../components/PatientServicesHistoryModal';
 import { PatientReceptionsModal } from '../components/PatientReceptionsModal';
 
-/** صفحه واحد فضای کاری پذیرش بیمار — Layout فشرده HIS/ERP */
+/** صفحه واحد فضای کاری پذیرش بیمار — Layout فشرده HIS با نوارهای چسبان */
 export function ReceptionWorkspacePage() {
   const { hasPermission } = useAuth();
   const location = useLocation();
@@ -58,7 +59,7 @@ export function ReceptionWorkspacePage() {
 
   const store = useReceptionStore();
 
-  /** بارگذاری پذیرش از پاسخ API داخل استور */
+  /** بارگذاری پذیرش از پاسخ API داخل استور (ذخیره‌شده → حالت مشاهده) */
   const applyDetail = useCallback((detail: Parameters<typeof store.loadFromDetail>[0]) => {
     if (detail.empty || !detail.id) {
       useReceptionStore.getState().resetNew();
@@ -312,6 +313,7 @@ export function ReceptionWorkspacePage() {
         }
       : null;
 
+  const hasPatientId = store.patient.id != null;
   const moreTools = [
     ...(hasPermission('wallet.read')
       ? [
@@ -319,6 +321,7 @@ export function ReceptionWorkspacePage() {
             key: 'ledger',
             icon: <DollarOutlined />,
             label: 'پرونده مالی بیمار',
+            disabled: !hasPatientId,
             onClick: () => setLedgerOpen(true),
           },
         ]
@@ -327,31 +330,60 @@ export function ReceptionWorkspacePage() {
       key: 'history',
       icon: <HistoryOutlined />,
       label: 'خدمات دریافت‌شده',
+      disabled: !hasPatientId,
       onClick: () => setHistoryOpen(true),
     },
     {
       key: 'receptions',
       icon: <UnorderedListOutlined />,
       label: 'لیست پذیرش‌ها / پایان پذیرش',
+      disabled: !hasPatientId,
       onClick: () => setReceptionsOpen(true),
     },
   ];
 
+  const patientName = [store.patient.first_name, store.patient.last_name].filter(Boolean).join(' ');
+  const statusLabel = store.deleted
+    ? 'حذف‌شده'
+    : store.isNew
+      ? 'جدید'
+      : store.status === 'saved'
+        ? 'ذخیره‌شده'
+        : 'پیش‌نویس';
+  const statusColor = store.deleted
+    ? 'red'
+    : store.isNew
+      ? 'blue'
+      : store.status === 'saved'
+        ? 'green'
+        : 'default';
+
   return (
     <Flex vertical gap={8} className="reception-workspace">
-      {/* Toolbar */}
-      <Card size="small" styles={{ body: { padding: '8px 12px' } }}>
+      {/* Toolbar چسبان */}
+      <Card
+        size="small"
+        className="reception-toolbar"
+        styles={{ body: { padding: '8px 12px' } }}
+      >
         <Flex wrap="wrap" gap={8} align="center" justify="space-between">
           <Space size={4} wrap>
             <Typography.Text strong>پذیرش</Typography.Text>
-            <Tag>{store.isNew ? 'جدید' : `#${store.receptionId}`}</Tag>
-            <Tag color={store.status === 'saved' ? 'green' : 'default'}>
-              {store.status === 'saved' ? 'ذخیره‌شده' : 'پیش‌نویس'}
-            </Tag>
-            {store.deleted && <Tag color="red">حذف‌شده</Tag>}
+            {!store.isNew && <Tag>#{store.receptionId}</Tag>}
+            <Tag color={statusColor}>{statusLabel}</Tag>
+            {store.editing && !store.deleted && <Tag color="orange">ویرایش</Tag>}
+            {!store.editing && !store.isNew && !store.deleted && (
+              <Tag>فقط مشاهده</Tag>
+            )}
             {store.receptionDate && (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                تاریخ: {store.receptionDate}
+                تاریخ: {new Date(store.receptionDate).toLocaleDateString('fa-IR')}
+              </Typography.Text>
+            )}
+            {patientName && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {patientName}
+                {store.patient.file_number ? ` · پرونده ${store.patient.file_number}` : ''}
               </Typography.Text>
             )}
           </Space>
@@ -386,7 +418,7 @@ export function ReceptionWorkspacePage() {
               onDelete={() => void handleDelete()}
               onRestore={() => void handleRestore()}
             />
-            {!store.isNew && store.patient.id != null && (
+            {!store.isNew && (
               <Dropdown menu={{ items: moreTools }} trigger={['click']}>
                 <Button size="small">
                   ابزارها <DownOutlined />
@@ -397,38 +429,93 @@ export function ReceptionWorkspacePage() {
         </Flex>
       </Card>
 
-      {/* بیمار | بیمه | پزشک */}
-      <Row gutter={[8, 8]}>
-        <Col xs={24} lg={8}>
-          <Card title="اطلاعات بیمار" size="small" styles={{ body: { padding: 8 } }}>
-            <PatientInfo />
-          </Card>
-        </Col>
-        <Col xs={24} md={12} lg={8}>
-          <Card title="بیمه و کد خاص" size="small" styles={{ body: { padding: 8 } }}>
-            <InsuranceSelection onInsuranceChanged={(overrides) => void recalculate(overrides)} />
-          </Card>
-        </Col>
-        <Col xs={24} md={12} lg={8}>
-          <Card title="پزشک و پذیرش" size="small" styles={{ body: { padding: 8 } }}>
-            <DoctorSelection />
-            <Form layout="vertical" size="small" style={{ marginTop: 4 }}>
-              <Form.Item label="توضیحات" style={{ marginBottom: 0 }}>
-                <Input.TextArea
-                  rows={1}
-                  disabled={!store.editing}
-                  value={store.description}
-                  onChange={(e) => store.setDescription(e.target.value)}
-                />
-              </Form.Item>
-            </Form>
-          </Card>
-        </Col>
-      </Row>
+      {store.deleted && (
+        <Alert
+          type="error"
+          showIcon
+          message="این پذیرش حذف شده است و قابل ویرایش نیست."
+          action={
+            hasPermission('reception.restore') ? (
+              <Button size="small" onClick={() => void handleRestore()}>
+                بازیابی
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
-      {/* جدول خدمات + جمع */}
-      <Card size="small" styles={{ body: { padding: 8 } }} style={{ flex: 1, minHeight: 0 }}>
+      {/* بیمار | بیمه + پزشک */}
+      <div className="reception-meta">
+        <Row gutter={[8, 8]}>
+          <Col xs={24} lg={10}>
+            <Card
+              size="small"
+              styles={{ body: { padding: 8 } }}
+              title={
+                <Flex align="center" gap={8} wrap="wrap">
+                  <span>اطلاعات بیمار</span>
+                  {store.editing &&
+                    (store.patient.isExisting ? (
+                      <Tag color="green">بیمار موجود</Tag>
+                    ) : store.patient.national_code || store.patient.file_number ? (
+                      <Tag color="blue">بیمار جدید</Tag>
+                    ) : null)}
+                </Flex>
+              }
+            >
+              <PatientInfo />
+            </Card>
+          </Col>
+          <Col xs={24} lg={14}>
+            <Row gutter={[8, 8]}>
+              <Col xs={24} md={12}>
+                <Card title="بیمه و کد خاص" size="small" styles={{ body: { padding: 8 } }}>
+                  <InsuranceSelection
+                    onInsuranceChanged={(overrides) => void recalculate(overrides)}
+                  />
+                </Card>
+              </Col>
+              <Col xs={24} md={12}>
+                <Card title="پزشک و دستیار" size="small" styles={{ body: { padding: 8 } }}>
+                  <DoctorSelection />
+                </Card>
+                <Card size="small" styles={{ body: { padding: '6px 8px' } }}>
+                  <Flex align="center" gap={8}>
+                    <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
+                      توضیحات
+                    </Typography.Text>
+                    <Input
+                      size="small"
+                      disabled={!store.editing || store.deleted}
+                      value={store.description}
+                      placeholder="توضیحات پذیرش"
+                      onChange={(e) => store.setDescription(e.target.value)}
+                    />
+                  </Flex>
+                </Card>
+              </Col>
+             
+            </Row>
+          </Col>
+        </Row>
+      </div>
+
+      {/* جدول خدمات — فضای باقیمانده */}
+      <Card
+        size="small"
+        className="reception-services-card"
+        styles={{ body: { padding: 8, height: '100%', display: 'flex', flexDirection: 'column' } }}
+      >
         <ServicesTable onRecalculate={() => void recalculate()} />
+      </Card>
+
+      {/* جمع‌ها و ذخیره چسبان */}
+      <Card
+        size="small"
+        className="reception-footer"
+        styles={{ body: { padding: '8px 12px' } }}
+      >
+        <ReceptionTotalsBar saving={saving} onSave={() => void handleSave()} />
       </Card>
 
       <PatientWalletLedgerModal
@@ -452,6 +539,57 @@ export function ReceptionWorkspacePage() {
           }
         }}
       />
+
+      <style>{`
+        .reception-workspace {
+          height: calc(100vh - 128px);
+          min-height: 480px;
+          overflow: hidden;
+        }
+        .reception-toolbar {
+          flex-shrink: 0;
+          position: sticky;
+          top: 0;
+          z-index: 5;
+        }
+        .reception-meta {
+          flex-shrink: 0;
+          max-height: min(42vh, 380px);
+          overflow: auto;
+        }
+        .reception-services-card {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .reception-services-card .ant-card-body {
+          flex: 1;
+          min-height: 0;
+        }
+        .reception-footer {
+          flex-shrink: 0;
+          position: sticky;
+          bottom: 0;
+          z-index: 5;
+          border-top: 1px solid #f0f0f0;
+          box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+        }
+        @media (max-width: 992px) {
+          .reception-workspace {
+            height: auto;
+            min-height: calc(100vh - 128px);
+            overflow: visible;
+          }
+          .reception-meta {
+            max-height: none;
+            overflow: visible;
+          }
+          .reception-services-card {
+            min-height: 280px;
+          }
+        }
+      `}</style>
     </Flex>
   );
 }
