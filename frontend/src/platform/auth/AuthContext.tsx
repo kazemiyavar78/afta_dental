@@ -82,7 +82,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     refresh();
   }, [refresh]);
 
-  const hasPermission = (permission: string) => permissions.includes(permission);
+  const hasPermission = (permission: string) =>
+    isAdmin || permissions.includes(permission);
   const hasRole = (role: string) => user?.roleName === role;
 
   return (

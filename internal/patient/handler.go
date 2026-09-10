@@ -29,6 +29,16 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// GetLastFileNumber آخرین شماره پرونده و شماره پیشنهادی بعدی را برمی‌گرداند.
+func (h *Handler) GetLastFileNumber(c *gin.Context) {
+	resp, err := h.service.GetLastFileNumber()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // GetByID بیمار را با شناسه برمی‌گرداند.
 func (h *Handler) GetByID(c *gin.Context) {
 	var uri struct {

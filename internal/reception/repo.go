@@ -22,8 +22,11 @@ type Repository interface {
 	FindNext(cursor uint) (*Reception, error)
 	ReplaceServices(receptionID uint, services []ReceptionService) error
 	FindByPatientID(patientID uint) ([]Reception, error)
+	FindLastForPatient(patientID uint) (*Reception, error)
 	FindPreviousForPatient(patientID, currentID uint) (*Reception, error)
+	FindUnendedForPatient(patientID uint) ([]Reception, error)
 	FindPatientReceptionsInRange(patientID uint, from, to time.Time) ([]Reception, error)
+	MarkReceptionsEnded(ids []uint) error
 	CountPhotos(receptionID uint) (int64, error)
 	AddPhoto(photo *ReceptionPhoto) error
 }
@@ -153,6 +156,13 @@ func (r *gormRepository) FindByPatientID(patientID uint) ([]Reception, error) {
 	return list, err
 }
 
+// FindLastForPatient آخرین پذیرش پرونده را برمی‌گرداند.
+func (r *gormRepository) FindLastForPatient(patientID uint) (*Reception, error) {
+	var rec Reception
+	err := r.db.Preload("Services").Where("PatientID = ?", patientID).Order("ID DESC").Take(&rec).Error
+	return &rec, err
+}
+
 // FindPreviousForPatient پذیرش قبلی همان پرونده (قبل از currentID) را برمی‌گرداند.
 func (r *gormRepository) FindPreviousForPatient(patientID, currentID uint) (*Reception, error) {
 	var rec Reception
@@ -164,6 +174,26 @@ func (r *gormRepository) FindPreviousForPatient(patientID, currentID uint) (*Rec
 		return nil, err
 	}
 	return &rec, nil
+}
+
+// FindUnendedForPatient پذیرش‌های پایان‌نیافته پرونده را به ترتیب شناسه برمی‌گرداند.
+func (r *gormRepository) FindUnendedForPatient(patientID uint) ([]Reception, error) {
+	var list []Reception
+	err := r.db.Preload("Services").Preload("Photos").
+		Where("PatientID = ? AND ReceptionEnded = ?", patientID, false).
+		Order("ID ASC").
+		Find(&list).Error
+	return list, err
+}
+
+// MarkReceptionsEnded وضعیت پایان پذیرش را برای چند پذیرش ثبت می‌کند.
+func (r *gormRepository) MarkReceptionsEnded(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Model(&Reception{}).
+		Where("ID IN ?", ids).
+		Update("ReceptionEnded", true).Error
 }
 
 // FindPatientReceptionsInRange پذیرش‌های پرونده در بازه زمانی را برمی‌گرداند.

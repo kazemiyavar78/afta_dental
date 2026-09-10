@@ -19,8 +19,11 @@ type InsuranceSelectionProps = {
 };
 
 function focusField(wrap: HTMLElement | null) {
-  wrap?.querySelector<HTMLElement>('input')?.focus();
+  wrap?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
 }
+
+/** ظرف ثابت برای منوی کشویی Select — جلوگیری از لرزش اسکرول */
+const selectPopupContainer = () => document.body;
 
 /** انتخاب بیمه و کد خاص — فرم فشرده داخل کارت */
 export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionProps) {
@@ -39,7 +42,7 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
   const setSpecialCode = useReceptionStore((s) => s.setSpecialCode);
   const setBookingDate = useReceptionStore((s) => s.setBookingDate);
   const bookingDate = useReceptionStore((s) => s.bookingDate);
-  const requestBookingDateFocus = useReceptionStore((s) => s.requestBookingDateFocus);
+  // const requestBookingDateFocus = useReceptionStore((s) => s.requestBookingDateFocus);
   const referralCode = useReceptionStore((s) => s.referralCode);
 
 
@@ -108,8 +111,10 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
               <Select
                 allowClear
                 showSearch
+                virtual={false}
                 optionFilterProp="label"
                 disabled={!editing}
+                getPopupContainer={selectPopupContainer}
                 value={insuranceId ?? undefined}
                 options={baseOptions}
                 onChange={(v) => {
@@ -130,8 +135,10 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
               <Select
                 allowClear
                 showSearch
+                virtual={false}
                 optionFilterProp="label"
                 disabled={!editing}
+                getPopupContainer={selectPopupContainer}
                 value={additionalInsuranceId ?? undefined}
                 options={suppOptions}
                 onChange={(v) => {
@@ -217,6 +224,7 @@ export function InsuranceSelection({ onInsuranceChanged }: InsuranceSelectionPro
               value={bookingDate}
               disabled={!editing}
               style={{ width: '100%' }}
+              getPopupContainer={selectPopupContainer}
               onChange={(v) => {
                 setBookingDate(v || null);
                 window.setTimeout(() => focusField(bookingDateRef.current), 0);

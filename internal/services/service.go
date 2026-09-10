@@ -281,6 +281,19 @@ func (s *Service) ListExcludedServicesByOrganization(organizationID uint) ([]Exc
 	return result, nil
 }
 
+// ExcludedServiceIDSet شناسه خدمات خارج‌ازپوشش یک سازمان را به‌صورت set برمی‌گرداند.
+func (s *Service) ExcludedServiceIDSet(organizationID uint) (map[uint]struct{}, error) {
+	list, err := s.repo.FindByOrganizationID(organizationID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمات خارج‌شده.", err.Error(), 500)
+	}
+	set := make(map[uint]struct{}, len(list))
+	for i := range list {
+		set[list[i].ServiceID] = struct{}{}
+	}
+	return set, nil
+}
+
 // AddExcludedServices خدمات را به لیست خارج‌شده سازمان اضافه می‌کند و هش یکپارچگی را ثبت می‌کند.
 func (s *Service) AddExcludedServices(req ExcludedServicesRequest, actorID int, ip string) ([]ExcludedServiceResponse, error) {
 	if req.OrganizationID == 0 {

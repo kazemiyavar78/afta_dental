@@ -62,6 +62,8 @@ type Repository interface {
 	FindByNationalCode(nationalCode string) (*Patient, error)
 	FindByFileNumber(fileNumber string) (*Patient, error)
 	FindByFirstNameAndLastName(firstName string, lastName string) (*Patient, error)
+	// FindLatestFileNumber شماره پرونده آخرین بیمار ثبت‌شده را برمی‌گرداند؛ خالی اگر بیماری نباشد.
+	FindLatestFileNumber() (string, error)
 }
 
 type gormRepo struct{ db *gorm.DB }
@@ -146,6 +148,20 @@ func (r *gormRepo) FindByFirstNameAndLastName(firstName string, lastName string)
 	var p Patient
 	err := r.db.Where("first_name = ? AND last_name = ?", firstName, lastName).First(&p).Error
 	return &p, err
+}
+
+// FindLatestFileNumber شماره پرونده آخرین بیمار ثبت‌شده را برمی‌گرداند.
+func (r *gormRepo) FindLatestFileNumber() (string, error) {
+	var p Patient
+	// Last به‌جای Order+First — جلوگیری از ORDER BY تکراری در MSSQL
+	err := r.db.Last(&p).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", nil
+		}
+		return "", err
+	}
+	return p.FileNumber, nil
 }
 
 // Update بیمار را ذخیره می‌کند.

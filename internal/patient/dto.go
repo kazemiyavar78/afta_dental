@@ -41,6 +41,12 @@ type SearchRequest struct {
 	Sex               *bool  `form:"sex"`
 }
 
+// LastFileNumberResponse پاسخ API آخرین شماره پرونده و شماره پیشنهادی بعدی.
+type LastFileNumberResponse struct {
+	FileNumber     string `json:"file_number"`
+	NextFileNumber string `json:"next_file_number"`
+}
+
 // Response پاسخ API بیمار (بدون IntegrityHash).
 type Response struct {
 	ID                  uint    `json:"id"`

@@ -30,6 +30,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/logretention"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
+	"github.com/tpdenta/afta-reception/internal/report"
 	"github.com/tpdenta/afta-reception/internal/reception"
 	"github.com/tpdenta/afta-reception/internal/regulation"
 	"github.com/tpdenta/afta-reception/internal/services"
@@ -187,6 +188,35 @@ func main() {
 	if err := orgSvc.FixIntegrityHashes(); err != nil {
 		log.Printf("هشدار: اصلاح هش یکپارچگی سازمان‌ها: %v", err)
 	}
+	// یک‌بار بعد از مایگریت CenterPackageID همه هش‌های سازمان را با فرمول جدید می‌سازد
+	if flag, err := settingsSvc.GetSettingValue(settings.OrgIntegrityHashMigrationV2); err != nil {
+		log.Printf("هشدار: خواندن فلگ مهاجرت هش سازمان: %v", err)
+	} else if flag != "1" {
+		n, recalcErr := orgSvc.RecalculateAllIntegrityHashes()
+		if recalcErr != nil {
+			log.Printf("هشدار: بازمحاسبه هش سازمان‌ها: %v", recalcErr)
+		} else {
+			if err := settingsSvc.UpdateSetting(settings.OrgIntegrityHashMigrationV2, "1", 0, "startup"); err != nil {
+				log.Printf("هشدار: ثبت فلگ مهاجرت هش سازمان: %v", err)
+			} else {
+				log.Printf("مهاجرت: هش یکپارچگی %d سازمان بازمحاسبه شد", n)
+			}
+		}
+	}
+	if flag, err := settingsSvc.GetSettingValue(settings.OrgIntegrityHashMigrationV3); err != nil {
+		log.Printf("هشدار: خواندن فلگ مهاجرت هش IsFree: %v", err)
+	} else if flag != "1" {
+		n, recalcErr := orgSvc.RecalculateAllIntegrityHashes()
+		if recalcErr != nil {
+			log.Printf("هشدار: بازمحاسبه هش سازمان‌ها (IsFree): %v", recalcErr)
+		} else {
+			if err := settingsSvc.UpdateSetting(settings.OrgIntegrityHashMigrationV3, "1", 0, "startup"); err != nil {
+				log.Printf("هشدار: ثبت فلگ مهاجرت هش IsFree: %v", err)
+			} else {
+				log.Printf("مهاجرت IsFree: هش یکپارچگی %d سازمان بازمحاسبه شد", n)
+			}
+		}
+	}
 	orgHandler := organization.NewHandler(orgSvc)
 	organization.RegisterRoutes(api, orgHandler)
 
@@ -228,6 +258,9 @@ func main() {
 
 	logsHandler := logs.NewHandler(auditMgr.Repository())
 	logs.RegisterRoutes(api, logsHandler)
+
+	reportHandler := report.NewHandler(report.NewService(database))
+	report.RegisterRoutes(api, reportHandler)
 
 	if cfg.DevMode {
 		log.Println("حالت توسعه: فقط API فعال است — فرانت را با npm run dev در پوشه frontend اجرا کنید")

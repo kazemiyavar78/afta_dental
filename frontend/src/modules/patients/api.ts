@@ -42,3 +42,15 @@ export async function updatePatient(id: number, payload: PatientPayload): Promis
 export async function deletePatient(id: number): Promise<void> {
   await httpClient.delete(`/patients/${id}`);
 }
+
+/** پاسخ API آخرین شماره پرونده */
+export type LastFileNumberResponse = {
+  file_number: string;
+  next_file_number: string;
+};
+
+/** دریافت آخرین شماره پرونده ثبت‌شده و شماره پیشنهادی بعدی */
+export async function fetchLastFileNumber(): Promise<LastFileNumberResponse> {
+  const { data } = await httpClient.get<LastFileNumberResponse>('/patients/last-file-number');
+  return data;
+}

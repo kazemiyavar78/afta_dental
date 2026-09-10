@@ -11,13 +11,11 @@ import {
   Space,
   Switch,
   Tag,
-  message,
 } from 'antd';
 import {
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
-  PrinterOutlined,
   SearchOutlined,
   ClearOutlined,
   DollarOutlined,
@@ -51,7 +49,8 @@ import {
   type PatientSearchFormValues,
 } from '../hooks';
 import type { Patient, PatientSearchParams } from '../types';
-import { printPatientsA4 } from '../printPatientsA4';
+import { patientListReportDefinition } from '../definitions/patientListReport';
+import { ReportPageSetup, ReportToolbar, useReport } from '@/platform/reports';
 
 const emptyFormValues: PatientFormValues = {
   first_name: '',
@@ -115,6 +114,20 @@ export function PatientsPage() {
     queryKey,
     queryFn: () => fetchPatients(searchParams),
   });
+
+  const {
+    handlePrint,
+    handlePdf,
+    handleExcel,
+    exporting,
+    pageConfig,
+    setPageConfig,
+  } = useReport({
+    definition: patientListReportDefinition,
+    data,
+  });
+
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
 
   const {
     control,
@@ -212,14 +225,6 @@ export function PatientsPage() {
     setSearchParams({});
   };
 
-  const onPrint = () => {
-    try {
-      printPatientsA4(data, 'فهرست بیماران');
-    } catch {
-      message.error('امکان باز کردن پنجره چاپ وجود ندارد');
-    }
-  };
-
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   const columns: ColumnsType<Patient> = [
@@ -312,9 +317,15 @@ export function PatientsPage() {
         title="بیماران"
         extra={
           <Space>
-            <Button icon={<PrinterOutlined />} onClick={onPrint} disabled={data.length === 0}>
-              چاپ A4
-            </Button>
+            <ReportToolbar
+              options={patientListReportDefinition.toolbar}
+              onPrint={handlePrint}
+              onPdf={handlePdf}
+              onExcel={handleExcel}
+              onPageSetup={() => setPageSetupOpen(true)}
+              disabled={data.length === 0}
+              loading={exporting}
+            />
             <PermissionGuard permission="patient.create">
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                 بیمار جدید
@@ -322,6 +333,13 @@ export function PatientsPage() {
             </PermissionGuard>
           </Space>
         }
+      />
+
+      <ReportPageSetup
+        open={pageSetupOpen}
+        config={pageConfig}
+        onClose={() => setPageSetupOpen(false)}
+        onApply={setPageConfig}
       />
 
       <Card style={{ marginBottom: 16 }} title="جستجو">

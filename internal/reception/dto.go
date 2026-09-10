@@ -51,6 +51,7 @@ type CalculateRequest struct {
 	InsuranceID                   *uint              `json:"insurance_id"`
 	AdditionalInsuranceID         *uint              `json:"additional_insurance_id"`
 	SpecialCodeID                 *uint              `json:"special_code_id"`
+	DoctorID                      *uint              `json:"doctor_id"`
 	AdditionalInsuranceCoverage   *int64             `json:"additional_insurance_coverage"`
 	AdditionalInsurancePercentage *uint8             `json:"additional_insurance_percentage"`
 	Services                      []ServiceLineInput `json:"services" binding:"required"`

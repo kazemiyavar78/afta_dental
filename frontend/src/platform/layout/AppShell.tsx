@@ -17,6 +17,7 @@ import {
   IdcardOutlined,
   KeyOutlined,
   AuditOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useState, useMemo, type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -61,6 +62,24 @@ export function AppShell({ children }: AppShellProps) {
     { key: '/regulations', icon: <AuditOutlined />, label: 'ضوابط', permission: 'regulation.read' },
     { key: '/tariff', icon: <TagsOutlined />, label: 'تعرفه', permission: 'tariff.read' },
     { key: '/logs', icon: <FileTextOutlined />, label: 'لاگ‌ها', permission: 'logs.read' },
+    {
+      key: '/reports/revenue-by-organization',
+      icon: <BarChartOutlined />,
+      label: 'گزارش درآمد',
+      permission: 'reports.read',
+    },
+    {
+      key: '/reports/user-performance',
+      icon: <BarChartOutlined />,
+      label: 'کارکرد کاربران',
+      permission: 'reports.read',
+    },
+    {
+      key: '/reports/doctor-performance',
+      icon: <BarChartOutlined />,
+      label: 'کارکرد پزشکان',
+      permission: 'reports.read',
+    },
 
     { key: '/settings', icon: <SettingOutlined />, label: 'تنظیمات', permission: 'security.settings' },
   ];

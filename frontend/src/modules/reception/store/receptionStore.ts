@@ -41,8 +41,12 @@ type ReceptionStore = {
   quantityFocusKey: string | null;
   /** توکن فوکوس به فیلد تاریخ اعتبار دفترچه پس از انتخاب دستیار */
   bookingDateFocusToken: number;
+  /** توکن فوکوس به کد ملی پس از ایجاد پذیرش جدید */
+  newPatientFocusToken: number;
 
   resetNew: () => void;
+  /** شروع پذیرش جدید با شماره پرونده پیشنهادی — یک‌جا در استور */
+  beginNewReception: (fileNumber: string) => void;
   loadFromDetail: (detail: ReceptionDetail) => void;
   setPatient: (patch: Partial<PatientFormState>) => void;
   setInsuranceId: (id: number | null) => void;
@@ -68,6 +72,8 @@ type ReceptionStore = {
   requestQuantityFocus: (key: string) => void;
   clearQuantityFocus: () => void;
   requestBookingDateFocus: () => void;
+  /** درخواست فوکوس به فیلد کد ملی در پذیرش جدید */
+  requestNewPatientFocus: () => void;
   hasOrganization: () => boolean;
 };
 
@@ -103,6 +109,7 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
   serviceFocusKey: null,
   quantityFocusKey: null,
   bookingDateFocusToken: 0,
+  newPatientFocusToken: 0,
 
   resetNew: () =>
     set({
@@ -132,6 +139,37 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
       services: [],
       serviceFocusKey: null,
       quantityFocusKey: null,
+    }),
+
+  beginNewReception: (fileNumber) =>
+    set({
+      receptionId: null,
+      status: 'draft',
+      deleted: false,
+      editing: true,
+      isNew: true,
+      patient: { ...emptyPatient(), file_number: fileNumber, isExisting: false },
+      insuranceId: null,
+      additionalInsuranceId: null,
+      additionalInsurancePercentage: null,
+      additionalInsuranceCoverage: null,
+      specialCodeId: null,
+      specialCodeValue: '',
+      specialCodeName: '',
+      doctorId: null,
+      doctorName: '',
+      doctorMedicalCode: null,
+      assistantId: null,
+      assistantName: '',
+      bookingDate: null,
+      receptionDate: today(),
+      description: '',
+      discount: 0,
+      referralCode: null,
+      services: [],
+      serviceFocusKey: null,
+      quantityFocusKey: null,
+      newPatientFocusToken: get().newPatientFocusToken + 1,
     }),
 
   loadFromDetail: (detail) => {
@@ -237,5 +275,7 @@ export const useReceptionStore = create<ReceptionStore>((set, get) => ({
   clearQuantityFocus: () => set({ quantityFocusKey: null }),
   requestBookingDateFocus: () =>
     set({ bookingDateFocusToken: get().bookingDateFocusToken + 1 }),
+  requestNewPatientFocus: () =>
+    set({ newPatientFocusToken: get().newPatientFocusToken + 1 }),
   hasOrganization: () => get().insuranceId != null || get().additionalInsuranceId != null,
 }));

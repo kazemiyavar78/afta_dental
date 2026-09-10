@@ -64,19 +64,21 @@ func (r *gormRepository) FindAll(IsFn bool) ([]SecuritySetting, error) {
 	}
 
 	if IsFn {
-		for index, val := range list {
-			if key, ok := SettingsDicFN[val.SettingName]; ok {
-				list[index].SettingName = key
-			} else {
-				if index == len(list)-1 {
-					list = list[:index]
-				} else {
-					list = append(list[:index], list[index+1:]...)
-				}
-			}
-		}
+		list = filterSettingsForDisplay(list)
 	}
 	return list, err
+}
+
+// filterSettingsForDisplay برچسب فارسی را برای تنظیمات شناخته‌شده اعمال می‌کند و بقیه را حذف می‌کند.
+func filterSettingsForDisplay(list []SecuritySetting) []SecuritySetting {
+	filtered := make([]SecuritySetting, 0, len(list))
+	for _, val := range list {
+		if label, ok := SettingsDicFN[val.SettingName]; ok {
+			val.SettingName = label
+			filtered = append(filtered, val)
+		}
+	}
+	return filtered
 }
 
 func (r *gormRepository) Upsert(setting *SecuritySetting) error {

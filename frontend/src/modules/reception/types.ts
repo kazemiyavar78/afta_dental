@@ -121,6 +121,7 @@ export type CalculatePayload = {
   insurance_id: number | null;
   additional_insurance_id: number | null;
   special_code_id: number | null;
+  doctor_id: number | null;
   additional_insurance_coverage: number | null;
   additional_insurance_percentage: number | null;
   services: Array<{
@@ -177,6 +178,23 @@ export type PatientServiceHistoryItem = {
   cash_amount: number;
   service_names: string[];
 };
+
+/**
+ * شماره پرونده بعدی — یک واحد به بخش عددی انتهای رشته اضافه می‌کند.
+ * @param current شماره پرونده فعلی
+ * @returns شماره پرونده پیشنهادی بعدی
+ */
+export function nextFileNumber(current: string): string {
+  const trimmed = current.trim();
+  if (!trimmed) return '1';
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (!match) return trimmed;
+  const prefix = match[1] ?? '';
+  const digits = match[2] ?? '';
+  const next = String(Number(digits) + 1);
+  const padded = next.length < digits.length ? next.padStart(digits.length, '0') : next;
+  return `${prefix}${padded}`;
+}
 
 /** سهم صندوق یک سطر: نرخ − سهم سازمان − سهم تکمیلی − یارانه */
 export function lineCashAmount(line: {

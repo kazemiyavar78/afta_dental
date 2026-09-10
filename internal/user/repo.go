@@ -101,7 +101,7 @@ func (r *gormRepository) CountUsersByRoleID(roleID int) (int64, error) {
 
 func (r *gormRepository) FindDoctors() ([]User, error) {
 	var users []User
-	err := r.db.Where("UserType = ?", UserTypeDoctor).Find(&users).Error
+	err := r.db.Where("UserType IN ?", []UserType{UserTypeDoctor, UserTypeSpecialist}).Find(&users).Error
 	return users, err
 }
 

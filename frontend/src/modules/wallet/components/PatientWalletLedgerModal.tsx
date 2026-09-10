@@ -223,7 +223,7 @@ export function PatientWalletLedgerModal({
       render: (name: string, record) => (record.performed_by === 0 ? 'سیستم' : name || '—'),
     },
     {
-      title: 'پرداختی',
+      title: 'دریافتی',
       dataIndex: 'amount',
       key: 'paid',
       width: 140,
@@ -238,7 +238,7 @@ export function PatientWalletLedgerModal({
       },
     },
     {
-      title: 'دریافتی',
+      title: 'پرداختی',
       dataIndex: 'amount',
       key: 'received',
       width: 140,

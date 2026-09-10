@@ -57,6 +57,7 @@ var defaultPermissions = map[string]string{
 	"regulation.delete":            "حذف ضوابط",
 	"security.settings":            "خواندن تنظیمات امنیتی",
 	"logs.read":                    "خواندن لاگها",
+	"reports.read":                 "خواندن گزارشها",
 	"excluded_services.read":       "خواندن خدمات خارج شده",
 	"excluded_services.add":     "اضافه کردن خدمات خارج شده",
 	"excluded_services.remove": "حذف خدمات خارج شده",

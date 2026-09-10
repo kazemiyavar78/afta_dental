@@ -5,11 +5,18 @@ import { fetchAssistants, fetchDoctors } from '../api';
 import { useReceptionStore } from '../store/receptionStore';
 
 function focusField(wrap: HTMLElement | null) {
-  wrap?.querySelector<HTMLElement>('input')?.focus();
+  wrap?.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
 }
 
+/** ظرف ثابت برای منوی کشویی Select — جلوگیری از لرزش اسکرول */
+const selectPopupContainer = () => document.body;
+
+type DoctorSelectionProps = {
+  onDoctorChanged?: () => void;
+};
+
 /** انتخاب پزشک/دستیار و تاریخ‌ها — فرم فشرده داخل کارت */
-export function DoctorSelection() {
+export function DoctorSelection({ onDoctorChanged }: DoctorSelectionProps) {
   const editing = useReceptionStore((s) => s.editing);
   const doctorId = useReceptionStore((s) => s.doctorId);
   const doctorMedicalCode = useReceptionStore((s) => s.doctorMedicalCode);
@@ -59,8 +66,10 @@ export function DoctorSelection() {
           >
             <Select
               showSearch
+              virtual={false}
               optionFilterProp="label"
               disabled={!editing}
+              getPopupContainer={selectPopupContainer}
               value={doctorId ?? undefined}
               placeholder="انتخاب پزشک"
               options={activeDoctors.map((d) => ({
@@ -71,11 +80,15 @@ export function DoctorSelection() {
                 const d = activeDoctors.find((x) => x.id === id);
                 if (d) {
                   setDoctor(d.id, `${d.name} ${d.family}`, d.medical_code);
+                  onDoctorChanged?.();
                   window.setTimeout(() => focusField(assistantWrapRef.current), 0);
                 }
               }}
               allowClear
-              onClear={() => setDoctor(null, '', null)}
+              onClear={() => {
+                setDoctor(null, '', null);
+                onDoctorChanged?.();
+              }}
             />
           </Form.Item>
         </Col>
@@ -85,8 +98,10 @@ export function DoctorSelection() {
               <Select
                 showSearch
                 allowClear
+                virtual={false}
                 optionFilterProp="label"
                 disabled={!editing}
+                getPopupContainer={selectPopupContainer}
                 value={assistantId ?? undefined}
                 placeholder="اختیاری"
                 options={assistants.map((a) => ({

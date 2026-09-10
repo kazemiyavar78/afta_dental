@@ -55,6 +55,14 @@ export function OrganizationListPage() {
       ),
     },
     {
+      title: 'آزاد',
+      key: 'is_free',
+      width: 80,
+      render: (_, record) => (
+        record.is_free ? <Tag color="gold">آزاد</Tag> : '—'
+      ),
+    },
+    {
       title: 'عملیات',
       key: 'actions',
       width: 340,

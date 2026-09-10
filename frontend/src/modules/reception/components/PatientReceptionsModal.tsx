@@ -43,7 +43,11 @@ export function PatientReceptionsModal({ open, patientId, onClose, onEnded }: Pr
         return;
       }
       if (result.previous_reception_id) {
-        message.warning(result.message);
+        const regs = (result.regulation_descriptions ?? []).filter(Boolean);
+        message.warning({
+          content: regs.length > 0 ? `${result.message}` : result.message,
+          duration: 8,
+        });
         return;
       }
       if (result.required_photo_count > result.uploaded_photo_count) {

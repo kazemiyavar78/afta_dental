@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -20,20 +20,26 @@ import {
   HistoryOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/platform/auth/useAuth';
+import { fetchOrganizations } from '@/modules/organization/api';
 import { PatientWalletLedgerModal } from '@/modules/wallet/components/PatientWalletLedgerModal';
 import type { Patient } from '@/modules/patients/types';
 import {
   calculateReceptionServices,
   createReception,
   deleteReception,
+  fetchNextFileNumber,
   navigateReception,
   restoreReception,
   updateReception,
 } from '../api';
 import { useReceptionStore } from '../store/receptionStore';
 import { lineCashAmount, type UpsertReceptionPayload } from '../types';
+import { printReceptionFromStore } from '../receptionPrintActions';
+import { useReceptionHotkeys, createReceptionHotkeyHandler } from '../hooks/useReceptionHotkeys';
+import { usePreventFocusScroll } from '../hooks/usePreventFocusScroll';
 import { NavigationBar } from '../components/NavigationBar';
 import { PatientInfo } from '../components/PatientInfo';
 import {
@@ -58,6 +64,13 @@ export function ReceptionWorkspacePage() {
   const [receptionsOpen, setReceptionsOpen] = useState(false);
 
   const store = useReceptionStore();
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  usePreventFocusScroll(workspaceRef);
+  const { data: organizationsData } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: fetchOrganizations,
+  });
+  const organizations = organizationsData ?? [];
 
   /** بارگذاری پذیرش از پاسخ API داخل استور (ذخیره‌شده → حالت مشاهده) */
   const applyDetail = useCallback((detail: Parameters<typeof store.loadFromDetail>[0]) => {
@@ -68,12 +81,34 @@ export function ReceptionWorkspacePage() {
     useReceptionStore.getState().loadFromDetail(detail);
   }, []);
 
+  /** شروع پذیرش جدید با دریافت شماره پرونده از API */
+  const startNewReception = useCallback(async () => {
+    if (!hasPermission('reception.create')) {
+      message.error('شما مجوز ایجاد پذیرش را ندارید');
+      return;
+    }
+
+    let nextFileNumber = '1';
+    try {
+      const last = await fetchNextFileNumber();
+      if (last.next_file_number?.trim()) {
+        nextFileNumber = last.next_file_number.trim();
+      }
+    } catch (err: unknown) {
+      const msg =
+        (err as { message?: string })?.message ?? 'خطا در دریافت آخرین شماره پرونده';
+      message.warning(`${msg} — شماره پیش‌فرض ۱ استفاده می‌شود`);
+    }
+
+    useReceptionStore.getState().beginNewReception(nextFileNumber);
+  }, [hasPermission]);
+
   /** بارگذاری آخرین پذیرش هنگام ورود؛ مسیر /new یا نبود پذیرش → فرم خالی */
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (location.pathname.endsWith('/new')) {
-        useReceptionStore.getState().resetNew();
+        void startNewReception();
         return;
       }
       try {
@@ -91,7 +126,7 @@ export function ReceptionWorkspacePage() {
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, applyDetail]);
+  }, [location.pathname, applyDetail, startNewReception]);
 
   /** ناوبری بین پذیرش‌ها */
   async function handleNav(dir: 'first' | 'prev' | 'next' | 'last') {
@@ -137,6 +172,7 @@ export function ReceptionWorkspacePage() {
         : state.specialCodeId;
 
     if (insuranceId == null && additionalInsuranceId == null) return;
+    if (state.doctorId == null) return;
     const lines = state.services.filter((s) => s.service_id > 0);
     if (lines.length === 0) return;
     try {
@@ -144,6 +180,7 @@ export function ReceptionWorkspacePage() {
         insurance_id: insuranceId,
         additional_insurance_id: additionalInsuranceId,
         special_code_id: specialCodeId,
+        doctor_id: state.doctorId,
         additional_insurance_coverage: additionalInsuranceCoverage,
         additional_insurance_percentage: additionalInsurancePercentage,
         services: lines.map((s) => ({
@@ -226,42 +263,102 @@ export function ReceptionWorkspacePage() {
     };
   }
 
-  async function handleSave() {
-    if (store.deleted) {
-      message.error('پذیرش حذف شده و قابل ویرایش نیست');
+  /** پذیرش جدید — alias برای دکمه و F8 */
+  const handleNew = startNewReception;
+
+  /** افزودن سطر خدمت — مشابه دکمه افزودن خدمت */
+  const handleAddService = useCallback(() => {
+    const state = useReceptionStore.getState();
+    if (!state.editing || state.deleted) return;
+    if (!state.hasOrganization()) {
+      message.warning('لطفاً قبل از انتخاب خدمت، یک سازمان (پایه یا تکمیلی) انتخاب کنید.');
+      state.requestInsuranceFocus();
       return;
     }
-    if (!hasPermission(store.isNew ? 'reception.create' : 'reception.update') && !store.isNew) {
+    state.addServiceLine();
+  }, []);
+
+  async function handleSave(): Promise<boolean> {
+    const current = useReceptionStore.getState();
+    if (current.deleted) {
+      message.error('پذیرش حذف شده و قابل ویرایش نیست');
+      return false;
+    }
+    if (!hasPermission(current.isNew ? 'reception.create' : 'reception.update') && !current.isNew) {
       if (!hasPermission('reception.create') && !hasPermission('reception.update')) {
         message.error('شما مجوز این عملیات را ندارید');
-        return;
+        return false;
       }
     }
-    const negativeLine = useReceptionStore
-      .getState()
-      .services.find((s) => s.service_id > 0 && lineCashAmount(s) < 0);
+    const negativeLine = current.services.find((s) => s.service_id > 0 && lineCashAmount(s) < 0);
     if (negativeLine) {
       message.error('سهم صندوق یکی از خدمات منفی است؛ امکان ثبت وجود ندارد.');
-      return;
+      return false;
     }
     setSaving(true);
     try {
       const payload = buildPayload(true);
       const detail =
-        store.isNew || store.receptionId == null
+        current.isNew || current.receptionId == null
           ? await createReception(payload)
-          : await updateReception(store.receptionId, payload);
+          : await updateReception(current.receptionId, payload);
       applyDetail(detail);
       message.success('پذیرش ذخیره شد');
+      return true;
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
         'خطا در ذخیره پذیرش';
-      message.error(msg);
+      message.error({ content: msg, duration: 8 });
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  /** ذخیره و سپس چاپ قبض — میانبر F2 */
+  const handleSaveAndPrint = useCallback(async () => {
+    const saved = await handleSave();
+    if (saved) {
+      printReceptionFromStore(organizations, hasPermission);
+    }
+  }, [organizations, hasPermission]);
+
+  /** F8 — پذیرش ثبت‌شده: پرینت | پذیرش جدید: ذخیره سپس پرینت */
+  const handleF8Print = useCallback(async () => {
+    const state = useReceptionStore.getState();
+    if (state.deleted) {
+      message.error('پذیرش حذف شده و قابل چاپ نیست');
+      return;
+    }
+    if (state.isNew || state.receptionId == null) {
+      await handleSaveAndPrint();
+      return;
+    }
+    printReceptionFromStore(organizations, hasPermission);
+  }, [organizations, hasPermission, handleSaveAndPrint]);
+
+  /** میانبرهای F8/F1/F2/Esc */
+  const hotkeysDisabled = ledgerOpen || historyOpen || receptionsOpen;
+  const handleGoLast = useCallback(() => {
+    void handleNav('last');
+  }, [store.receptionId]);
+
+  useReceptionHotkeys({
+    disabled: hotkeysDisabled,
+    onF8Print: handleF8Print,
+    onAddService: handleAddService,
+    onSaveAndPrint: handleSaveAndPrint,
+    onLast: handleGoLast,
+  });
+
+  const handleWorkspaceKeyDown = createReceptionHotkeyHandler({
+    disabled: hotkeysDisabled,
+    onF8Print: handleF8Print,
+    onAddService: handleAddService,
+    onSaveAndPrint: handleSaveAndPrint,
+    onLast: handleGoLast,
+  });
 
   async function handleDelete() {
     if (store.receptionId == null) return;
@@ -359,7 +456,14 @@ export function ReceptionWorkspacePage() {
         : 'default';
 
   return (
-    <Flex vertical gap={8} className="reception-workspace">
+    <Flex
+      vertical
+      gap={8}
+      className="reception-workspace"
+      ref={workspaceRef}
+      tabIndex={-1}
+      onKeyDown={handleWorkspaceKeyDown}
+    >
       {/* Toolbar چسبان */}
       <Card
         size="small"
@@ -395,7 +499,7 @@ export function ReceptionWorkspacePage() {
               onPrev={() => handleNav('prev')}
               onNext={() => handleNav('next')}
               onLast={() => handleNav('last')}
-              onNew={() => store.resetNew()}
+              onNew={() => void handleNew()}
             />
             <Divider type="vertical" style={{ height: 24, margin: 0 }} />
             <ActionButtons
@@ -444,7 +548,7 @@ export function ReceptionWorkspacePage() {
         />
       )}
 
-      {/* بیمار | بیمه + پزشک */}
+      {/* بیمار | بیمه + پزشک — بدون اسکرول داخلی برای جلوگیری از لرزش */}
       <div className="reception-meta">
         <Row gutter={[8, 8]}>
           <Col xs={24} lg={10}>
@@ -477,7 +581,7 @@ export function ReceptionWorkspacePage() {
               </Col>
               <Col xs={24} md={12}>
                 <Card title="پزشک و دستیار" size="small" styles={{ body: { padding: 8 } }}>
-                  <DoctorSelection />
+                  <DoctorSelection onDoctorChanged={() => void recalculate()} />
                 </Card>
                 <Card size="small" styles={{ body: { padding: '6px 8px' } }}>
                   <Flex align="center" gap={8}>
@@ -545,17 +649,20 @@ export function ReceptionWorkspacePage() {
           height: calc(100vh - 128px);
           min-height: 480px;
           overflow: hidden;
+          contain: layout;
         }
         .reception-toolbar {
           flex-shrink: 0;
-          position: sticky;
-          top: 0;
-          z-index: 5;
         }
         .reception-meta {
           flex-shrink: 0;
-          max-height: min(42vh, 380px);
-          overflow: auto;
+          overflow: visible;
+        }
+        .reception-meta .ant-select-selector:focus,
+        .reception-meta .ant-input:focus,
+        .reception-meta .ant-input-number:focus,
+        .reception-meta .ant-picker:focus {
+          scroll-margin: 0;
         }
         .reception-services-card {
           flex: 1;
@@ -569,9 +676,6 @@ export function ReceptionWorkspacePage() {
         }
         .reception-footer {
           flex-shrink: 0;
-          position: sticky;
-          bottom: 0;
-          z-index: 5;
           border-top: 1px solid #f0f0f0;
           box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
         }

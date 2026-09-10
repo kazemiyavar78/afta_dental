@@ -23,6 +23,10 @@ const (
 	PasswordRequireSpecial         = "Password_RequireSpecial"
 	MaximumUploadsPerWindow        = "MaximumUploadsPerWindow"
 	UploadWindowMinutes            = "UploadWindowMinutes"
+	// یک‌بار بعد از افزودن CenterPackageID به فرمول هش سازمان
+	OrgIntegrityHashMigrationV2 = "OrgIntegrityHashMigrationV2"
+	// یک‌بار بعد از افزودن IsFree به فرمول هش سازمان
+	OrgIntegrityHashMigrationV3 = "OrgIntegrityHashMigrationV3"
 )
 
 // DefaultSettings مقادیر پیش‌فرض تنظیمات امنیتی.
@@ -48,6 +52,8 @@ var DefaultSettings = map[string]string{
 	PasswordRequireSpecial:         "true",
 	MaximumUploadsPerWindow:        "10",
 	UploadWindowMinutes:            "60",
+	OrgIntegrityHashMigrationV2:    "0",
+	OrgIntegrityHashMigrationV3:    "0",
 }
 
 //دیکشنری فارسی

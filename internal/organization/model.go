@@ -14,11 +14,17 @@ type Organization struct {
 	IsTakmili bool `gorm:"column:IsTakmili;default:false"`
 	// فعال یا غیرفعال
 	IsActive      bool   `gorm:"column:IsActive;default:true"`
+	// سازمان آزاد
+	IsFree bool `gorm:"column:IsFree;default:false"`
+
 	IntegrityHash string `gorm:"column:IntegrityHash;size:128;not null"`
 	// بسته تعرفه منتصب
 	PackageID uint `gorm:"column:PackageID;not null;index"`
 	// بسته مرکز
 	CenterPackageID uint `gorm:"column:CenterPackageID;not null;index"`
+
+	// خدمات غیرفعال شده
+	// ExcludedServices []uint `gorm:"column:ExcludedServices;type:jsonb;not null;default:[]"`
 
 	Package       organizationpackage.OrganizationPackage `gorm:"foreignKey:PackageID"`
 	CenterPackage organizationpackage.OrganizationPackage `gorm:"foreignKey:CenterPackageID"`
@@ -35,6 +41,7 @@ type Repository interface {
 	FindByID(id uint) (*Organization, error)
 	FindAll() ([]Organization, error)
 	GetActive() ([]Organization, error)
+	FindFree() (*Organization, error)
 }
 
 type gormRepo struct{ db *gorm.DB }
@@ -55,7 +62,7 @@ func (r *gormRepo) FindByID(id uint) (*Organization, error) {
 // FindAll همه سازمان‌ها را به ترتیب نزولی شناسه برمی‌گرداند (همراه با بسته‌ها).
 func (r *gormRepo) FindAll() ([]Organization, error) {
 	var list []Organization
-	err := r.db.Preload("Package").Preload("CenterPackage").Order("ID DESC").Find(&list).Error
+	err := r.db.Preload("Package").Preload("CenterPackage").Order("ID").Find(&list).Error
 	return list, err
 }
 
@@ -74,4 +81,14 @@ func (r *gormRepo) Update(o *Organization) error {
 // Delete سازمان را به‌صورت soft-delete حذف می‌کند.
 func (r *gormRepo) Delete(o *Organization) error {
 	return r.db.Delete(o).Error
+}
+
+// FindFree سازمان آزاد (IsFree=true) را برمی‌گرداند.
+func (r *gormRepo) FindFree() (*Organization, error) {
+	var o Organization
+	err := r.db.Where("IsFree = ?", true).First(&o).Error
+	if err != nil {
+		return nil, err
+	}
+	return &o, nil
 }

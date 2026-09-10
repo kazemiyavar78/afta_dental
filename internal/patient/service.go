@@ -2,6 +2,8 @@ package patient
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +33,30 @@ func NewService(
 		audit:      auditMgr,
 		encryptSvc: encryptSvc,
 	}
+}
+
+// nextFileNumber یک واحد به بخش عددی انتهای شماره پرونده اضافه می‌کند.
+func nextFileNumber(current string) string {
+	trimmed := strings.TrimSpace(current)
+	if trimmed == "" {
+		return "1"
+	}
+	re := regexp.MustCompile(`^(.*?)(\d+)$`)
+	m := re.FindStringSubmatch(trimmed)
+	if m == nil {
+		return trimmed
+	}
+	prefix := m[1]
+	digits := m[2]
+	n, err := strconv.ParseInt(digits, 10, 64)
+	if err != nil {
+		return trimmed
+	}
+	next := strconv.FormatInt(n+1, 10)
+	if len(next) < len(digits) {
+		next = strings.Repeat("0", len(digits)-len(next)) + next
+	}
+	return prefix + next
 }
 
 // derefString اشاره‌گر رشته را به مقدار خالی یا مقدار واقعی تبدیل می‌کند.
@@ -162,6 +188,20 @@ func (s *Service) GetByFileNumber(fileNumber string) (*Response, error) {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن بیمار.", err.Error(), 500)
 	}
 	return toResponse(p), nil
+}
+
+// GetLastFileNumber آخرین شماره پرونده ثبت‌شده و شماره پیشنهادی بعدی را برمی‌گرداند.
+func (s *Service) GetLastFileNumber() (*LastFileNumberResponse, error) {
+	fileNumber, err := s.repo.FindLatestFileNumber()
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن آخرین شماره پرونده.", err.Error(), 500)
+	}
+	resp := &LastFileNumberResponse{NextFileNumber: "1"}
+	if strings.TrimSpace(fileNumber) != "" {
+		resp.FileNumber = fileNumber
+		resp.NextFileNumber = nextFileNumber(fileNumber)
+	}
+	return resp, nil
 }
 
 // Get بیمار را با شناسه برمی‌گرداند.

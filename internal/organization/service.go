@@ -40,6 +40,7 @@ func toSensitiveData(o *Organization) encryption.OrganizationSensitiveData {
 		Name:            o.Name,
 		IsTakmili:       o.IsTakmili,
 		IsActive:        o.IsActive,
+		IsFree:          o.IsFree,
 		PackageID:       o.PackageID,
 		CenterPackageID: o.CenterPackageID,
 	}
@@ -52,6 +53,7 @@ func toResponse(o *Organization) *Response {
 		Name:              o.Name,
 		IsTakmili:         o.IsTakmili,
 		IsActive:          o.IsActive,
+		IsFree:            o.IsFree,
 		PackageID:         o.PackageID,
 		PackageName:       o.Package.PackageName,
 		CenterPackageID:   o.CenterPackageID,
@@ -86,6 +88,70 @@ func (s *Service) verifyIntegrity(o *Organization, actorID int, ip string) error
 	return nil
 }
 
+// applyFreeFlag تیک سازمان آزاد را اعمال می‌کند؛ فقط یک سازمان پایه می‌تواند آزاد باشد.
+func (s *Service) applyFreeFlag(o *Organization, isFree bool) error {
+	if !isFree {
+		o.IsFree = false
+		return nil
+	}
+	if o.IsTakmili {
+		return apperror.New("VALIDATION_ERROR", "سازمان آزاد فقط برای بیمه پایه مجاز است.", "is_free on takmili", 400)
+	}
+	if err := s.clearOtherFreeOrganizations(o.ID); err != nil {
+		return apperror.New("DB_ERROR", "خطا در بروزرسانی سازمان آزاد.", err.Error(), 500)
+	}
+	o.IsFree = true
+	return nil
+}
+
+// clearOtherFreeOrganizations تیک آزاد را از سایر سازمان‌ها برمی‌دارد و هش آن‌ها را بازمحاسبه می‌کند.
+func (s *Service) clearOtherFreeOrganizations(exceptID uint) error {
+	list, err := s.repo.FindAll()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		o := &list[i]
+		if !o.IsFree || o.ID == exceptID {
+			continue
+		}
+		o.IsFree = false
+		if err := s.recalculateIntegrityHash(o); err != nil {
+			return err
+		}
+		if err := s.repo.Update(o); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recalculateIntegrityHash هش یکپارچگی سازمان را با فرمول فعلی بازمحاسبه می‌کند.
+func (s *Service) recalculateIntegrityHash(o *Organization) error {
+	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
+	if err != nil {
+		return apperror.New("ENCRYPTION_ERROR", "خطا در ایجاد هش امنیتی سازمان.", err.Error(), 500)
+	}
+	o.IntegrityHash = integrityHash
+	return nil
+}
+
+// GetFreeOrganization سازمان آزاد را برمی‌گرداند.
+func (s *Service) GetFreeOrganization() (*Response, error) {
+	o, err := s.repo.FindFree()
+	if err == gorm.ErrRecordNotFound {
+		return nil, apperror.New("VALIDATION_ERROR", "سازمان آزاد تعریف نشده است.", "free organization not found", 400)
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن سازمان آزاد.", err.Error(), 500)
+	}
+	full, err := s.repo.FindByID(o.ID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن سازمان آزاد.", err.Error(), 500)
+	}
+	return toResponse(full), nil
+}
+
 // Create سازمان جدید می‌سازد، بسته‌ها را منتسب می‌کند و هش امنیتی آن را تولید می‌کند.
 func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
 	if err := s.ensurePackageExists(req.PackageID, "انتخاب بسته تعرفه الزامی است.", "بسته تعرفه انتخاب‌شده یافت نشد."); err != nil {
@@ -103,11 +169,13 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 		CenterPackageID: req.CenterPackageID,
 	}
 
-	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
-	if err != nil {
-		return nil, apperror.New("ENCRYPTION_ERROR", "خطا در ایجاد هش امنیتی سازمان.", err.Error(), 500)
+	if err := s.applyFreeFlag(o, req.IsFree); err != nil {
+		return nil, err
 	}
-	o.IntegrityHash = integrityHash
+
+	if err := s.recalculateIntegrityHash(o); err != nil {
+		return nil, err
+	}
 
 	if err := s.repo.Create(o); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد سازمان.", err.Error(), 500)
@@ -173,11 +241,13 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	o.PackageID = req.PackageID
 	o.CenterPackageID = req.CenterPackageID
 
-	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
-	if err != nil {
-		return nil, apperror.New("ENCRYPTION_ERROR", "خطا در ایجاد هش امنیتی سازمان.", err.Error(), 500)
+	if err := s.applyFreeFlag(o, req.IsFree); err != nil {
+		return nil, err
 	}
-	o.IntegrityHash = integrityHash
+
+	if err := s.recalculateIntegrityHash(o); err != nil {
+		return nil, err
+	}
 
 	if err := s.repo.Update(o); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی سازمان.", err.Error(), 500)
@@ -222,37 +292,57 @@ func (s *Service) FixIntegrityHashes() error {
 
 	for i := range list {
 		o := &list[i]
-		changed := false
+		centerFilled := false
 
 		// پر کردن CenterPackageID برای رکوردهای قبل از افزودن ستون
 		if o.CenterPackageID == 0 && o.PackageID != 0 {
 			o.CenterPackageID = o.PackageID
-			changed = true
+			centerFilled = true
 		}
 
-		if s.encryptSvc.CheckUserSecurityCode(toSensitiveData(o), o.IntegrityHash) {
-			if changed {
-				if err := s.repo.Update(o); err != nil {
-					return err
-				}
-			}
+		// اگر CenterPackageID تازه پر شده، هش قبلی دیگر معتبر نیست و باید از نو ساخته شود
+		if !centerFilled && s.encryptSvc.CheckUserSecurityCode(toSensitiveData(o), o.IntegrityHash) {
 			continue
 		}
 
+		legacyV2OK := o.IntegrityHash != "" && s.encryptSvc.CheckUserSecurityCodeLegacyV2(toSensitiveData(o), o.IntegrityHash)
 		legacyOK := o.IntegrityHash != "" && s.encryptSvc.CheckUserSecurityCodeLegacy(toSensitiveData(o), o.IntegrityHash)
-		if o.IntegrityHash != "" && !legacyOK {
+		if !centerFilled && o.IntegrityHash != "" && !legacyV2OK && !legacyOK {
 			// هش نه با فرمول جدید و نه قدیمی جور است → احتمال دستکاری؛ مهاجرت نکن
 			continue
 		}
 
-		integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
-		if err != nil {
+		if err := s.recalculateIntegrityHash(o); err != nil {
 			return err
 		}
-		o.IntegrityHash = integrityHash
 		if err := s.repo.Update(o); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// RecalculateAllIntegrityHashes همه هش‌های سازمان را با فرمول فعلی از نو می‌سازد (مهاجرت یک‌باره بعد از تغییر مدل).
+func (s *Service) RecalculateAllIntegrityHashes() (int, error) {
+	list, err := s.repo.FindAll()
+	if err != nil {
+		return 0, err
+	}
+
+	updated := 0
+	for i := range list {
+		o := &list[i]
+		if o.CenterPackageID == 0 && o.PackageID != 0 {
+			o.CenterPackageID = o.PackageID
+		}
+
+		if err := s.recalculateIntegrityHash(o); err != nil {
+			return updated, err
+		}
+		if err := s.repo.Update(o); err != nil {
+			return updated, err
+		}
+		updated++
+	}
+	return updated, nil
 }

@@ -10,6 +10,7 @@ export const userTypeOptions = [
   { value: 'User', label: 'کاربر' },
   { value: 'Doctor', label: 'پزشک' },
   { value: 'Assistant', label: 'کمک' },
+  { value: 'Specialist', label: 'پزشک متخصص' },
 ];
 
 /** اسکیمای ایجاد کاربر */

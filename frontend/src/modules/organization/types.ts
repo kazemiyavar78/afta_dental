@@ -5,6 +5,7 @@ export type Organization = {
   name: string;
   is_takmili: boolean;
   is_active: boolean;
+  is_free: boolean;
   package_id: number;
   package_name?: string;
   center_package_id: number;
@@ -15,6 +16,7 @@ export type CreateOrganizationPayload = {
   name: string;
   is_takmili: boolean;
   is_active: boolean;
+  is_free: boolean;
   package_id: number;
   center_package_id: number;
 };
@@ -23,6 +25,7 @@ export type UpdateOrganizationPayload = {
   name: string;
   is_takmili: boolean;
   is_active: boolean;
+  is_free: boolean;
   package_id: number;
   center_package_id: number;
 };

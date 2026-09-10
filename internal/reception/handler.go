@@ -93,6 +93,16 @@ func (h *Handler) Navigate(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// GetNextFileNumber شماره پرونده پیشنهادی بعدی را برمی‌گرداند.
+func (h *Handler) GetNextFileNumber(c *gin.Context) {
+	resp, err := h.service.GetNextFileNumber()
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // Calculate محاسبه خدمات بدون ذخیره.
 func (h *Handler) Calculate(c *gin.Context) {
 	var req CalculateRequest

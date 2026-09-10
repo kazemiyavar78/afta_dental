@@ -15,6 +15,10 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 		middleware.RequirePermission("reception.read"),
 		middleware.AuthorizationMiddleware(),
 		h.Navigate)
+	r.GET("/reception/next-file-number",
+		middleware.RequirePermission("reception.read", "reception.create"),
+		middleware.AuthorizationMiddleware(),
+		h.GetNextFileNumber)
 	r.POST("/reception/calculate",
 		middleware.RequirePermission("reception.create", "reception.update"),
 		middleware.AuthorizationMiddleware(),

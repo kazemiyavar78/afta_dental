@@ -11,6 +11,7 @@ type OrganizationSensitiveData struct {
 	Name            string
 	IsTakmili       bool
 	IsActive        bool
+	IsFree          bool
 	PackageID       uint
 	CenterPackageID uint
 }
@@ -26,6 +27,12 @@ func NewOrganizationEncryptionService(encryptor *Encryptor) *OrganizationEncrypt
 }
 
 func (s *OrganizationEncryptionService) sensitiveFields(data OrganizationSensitiveData) string {
+	return fmt.Sprintf("%s|%t|%t|%t|%d|%d",
+		data.Name, data.IsTakmili, data.IsActive, data.IsFree, data.PackageID, data.CenterPackageID)
+}
+
+// sensitiveFieldsLegacyV2 فرمول هش قبل از افزودن IsFree (برای مهاجرت امن).
+func (s *OrganizationEncryptionService) sensitiveFieldsLegacyV2(data OrganizationSensitiveData) string {
 	return fmt.Sprintf("%s|%t|%t|%d|%d",
 		data.Name, data.IsTakmili, data.IsActive, data.PackageID, data.CenterPackageID)
 }
@@ -46,6 +53,11 @@ func (s *OrganizationEncryptionService) CreateSecurityCode(data OrganizationSens
 // CheckUserSecurityCode یکپارچگی IntegrityHash سازمان را با فرمول فعلی بررسی می‌کند.
 func (s *OrganizationEncryptionService) CheckUserSecurityCode(data OrganizationSensitiveData, securityCode string) bool {
 	return s.checkSecurityCode(s.sensitiveFields(data), securityCode)
+}
+
+// CheckUserSecurityCodeLegacyV2 یکپارچگی را با فرمول قبل از IsFree بررسی می‌کند.
+func (s *OrganizationEncryptionService) CheckUserSecurityCodeLegacyV2(data OrganizationSensitiveData, securityCode string) bool {
+	return s.checkSecurityCode(s.sensitiveFieldsLegacyV2(data), securityCode)
 }
 
 // CheckUserSecurityCodeLegacy یکپارچگی را با فرمول قدیمی (بدون CenterPackageID) بررسی می‌کند.

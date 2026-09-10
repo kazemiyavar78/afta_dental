@@ -10,6 +10,7 @@ type CreateRequest struct {
 	Name            string `json:"name" binding:"required"`
 	IsTakmili       bool   `json:"is_takmili"`
 	IsActive        bool   `json:"is_active"`
+	IsFree          bool   `json:"is_free"`
 	PackageID       uint   `json:"package_id" binding:"required"`
 	CenterPackageID uint   `json:"center_package_id" binding:"required"`
 }
@@ -19,6 +20,7 @@ type UpdateRequest struct {
 	Name            string `json:"name" binding:"required"`
 	IsTakmili       bool   `json:"is_takmili"`
 	IsActive        bool   `json:"is_active"`
+	IsFree          bool   `json:"is_free"`
 	PackageID       uint   `json:"package_id" binding:"required"`
 	CenterPackageID uint   `json:"center_package_id" binding:"required"`
 }
@@ -29,6 +31,7 @@ type Response struct {
 	Name              string `json:"name"`
 	IsTakmili         bool   `json:"is_takmili"`
 	IsActive          bool   `json:"is_active"`
+	IsFree            bool   `json:"is_free"`
 	PackageID         uint   `json:"package_id"`
 	PackageName       string `json:"package_name,omitempty"`
 	CenterPackageID   uint   `json:"center_package_id"`

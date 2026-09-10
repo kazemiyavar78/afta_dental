@@ -19,6 +19,9 @@ import { TariffFormPage } from '@/modules/tariff/pages/TariffFormPage';
 import { SettingsPage } from '@/modules/settings/pages/SettingsPage';
 import { ProfilePage } from '@/modules/profile/pages/ProfilePage';
 import { LogsPage } from '@/modules/logs/pages/LogsPage';
+import { RevenueByOrganizationPage } from '@/modules/reports/pages/RevenueByOrganizationPage';
+import { DoctorPerformancePage } from '@/modules/reports/pages/DoctorPerformancePage';
+import { UserPerformancePage } from '@/modules/reports/pages/UserPerformancePage';
 import { RolesPage } from '@/modules/roles/pages/RolesPage';
 
 /** تعریف مسیر اپلیکیشن */
@@ -73,6 +76,22 @@ export const routeConfig: AppRoute[] = [
   { path: '/settings', element: <SettingsPage />, requiredPermission: 'security.settings' },
 
   { path: '/logs', element: <LogsPage />, requiredPermission: 'logs.read' },
+
+  {
+    path: '/reports/revenue-by-organization',
+    element: <RevenueByOrganizationPage />,
+    requiredPermission: 'reports.read',
+  },
+  {
+    path: '/reports/doctor-performance',
+    element: <DoctorPerformancePage />,
+    requiredPermission: 'reports.read',
+  },
+  {
+    path: '/reports/user-performance',
+    element: <UserPerformancePage />,
+    requiredPermission: 'reports.read',
+  },
 
   { path: '/profile', element: <ProfilePage /> },
 ];

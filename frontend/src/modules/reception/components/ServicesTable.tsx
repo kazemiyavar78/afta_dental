@@ -34,6 +34,12 @@ export function ServicesTable({ onRecalculate }: ServicesTableProps) {
 
   function handleTableKeyDown(e: KeyboardEvent) {
     if (!editing) return;
+    if (e.code === 'F1') {
+      e.preventDefault();
+      e.stopPropagation();
+      tryAddService();
+      return;
+    }
     if (e.ctrlKey && e.code === 'Space') {
       e.preventDefault();
       e.stopPropagation();
@@ -48,7 +54,7 @@ export function ServicesTable({ onRecalculate }: ServicesTableProps) {
           <Typography.Text strong>خدمات</Typography.Text>
           {editing && (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Ctrl+Space افزودن سطر
+              F1 یا Ctrl+Space افزودن سطر
             </Typography.Text>
           )}
         </Flex>

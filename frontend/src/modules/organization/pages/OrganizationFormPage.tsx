@@ -30,16 +30,25 @@ export function OrganizationFormPage() {
     enabled: isEdit,
   });
 
-  const { control, handleSubmit, reset, setError, formState: { errors } } = useForm<OrganizationFormValues>({
+  const { control, handleSubmit, reset, setError, watch, setValue, formState: { errors } } = useForm<OrganizationFormValues>({
     resolver: zodResolver(organizationSchema),
     defaultValues: {
       name: '',
       is_takmili: false,
       is_active: true,
+      is_free: false,
       package_id: 0,
       center_package_id: 0,
     },
   });
+
+  const isTakmili = watch('is_takmili');
+
+  useEffect(() => {
+    if (isTakmili) {
+      setValue('is_free', false);
+    }
+  }, [isTakmili, setValue]);
 
   useEffect(() => {
     if (existing) {
@@ -47,6 +56,7 @@ export function OrganizationFormPage() {
         name: existing.name,
         is_takmili: existing.is_takmili,
         is_active: existing.is_active,
+        is_free: existing.is_free,
         package_id: existing.package_id,
         center_package_id: existing.center_package_id,
       });
@@ -141,6 +151,19 @@ export function OrganizationFormPage() {
               name="is_active"
               control={control}
               render={({ field }) => <Switch checked={field.value} onChange={field.onChange} />}
+            />
+          </Form.Item>
+          <Form.Item label="سازمان آزاد" extra="فقط یک سازمان پایه می‌تواند سازمان آزاد باشد">
+            <Controller
+              name="is_free"
+              control={control}
+              render={({ field }) => (
+                <Switch
+                  checked={field.value}
+                  onChange={field.onChange}
+                  disabled={isTakmili}
+                />
+              )}
             />
           </Form.Item>
           <Space>

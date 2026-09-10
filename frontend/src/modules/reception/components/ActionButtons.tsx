@@ -1,4 +1,4 @@
-import { Button, Space, Popconfirm, message } from 'antd';
+import { Button, Space, Popconfirm } from 'antd';
 import {
   SaveOutlined,
   EditOutlined,
@@ -6,8 +6,11 @@ import {
   PrinterOutlined,
   RollbackOutlined,
 } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { PermissionGuard } from '@/platform/auth/PermissionGuard';
 import { useAuth } from '@/platform/auth/useAuth';
+import { fetchOrganizations } from '@/modules/organization/api';
+import { printReceptionFromStore } from '../receptionPrintActions';
 
 type ActionButtonsProps = {
   saving?: boolean;
@@ -32,12 +35,22 @@ export function ActionButtons({
   onRestore,
 }: ActionButtonsProps) {
   const { hasPermission } = useAuth();
+  const { data: organizationsData } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: fetchOrganizations,
+  });
+  const organizations = organizationsData ?? [];
 
   const canSave =
     !deleted &&
     canEdit &&
     ((isNew && hasPermission('reception.create')) ||
       (!isNew && (hasPermission('reception.update') || hasPermission('reception.create'))));
+
+  /** چاپ قبض ۷ سانتی پذیرش با اطلاعات صفحه جاری */
+  function handlePrint() {
+    printReceptionFromStore(organizations, hasPermission);
+  }
 
   return (
     <Space.Compact>
@@ -74,17 +87,7 @@ export function ActionButtons({
       )}
 
       <PermissionGuard permission="reception.read">
-        <Button
-          size="small"
-          icon={<PrinterOutlined />}
-          onClick={() => {
-            if (!hasPermission('reception.read')) {
-              message.error('شما مجوز این عملیات را ندارید');
-              return;
-            }
-            window.print();
-          }}
-        >
+        <Button size="small" icon={<PrinterOutlined />} onClick={handlePrint}>
           پرینت
         </Button>
       </PermissionGuard>

@@ -41,11 +41,9 @@ type ServiceItem struct {
 	// نیاز به انتخاب شماره دندان دارد؟
 	HasTooth bool `gorm:"column:HasTooth;not null;default:false"`
 	// اجازه استفاده بیش از یکبار در پرونده
-	AllowMultipleUse bool `gorm:"column:AllowMultipleUse;not null;default:false"`
-	IsActive        bool   `gorm:"column:IsActive;default:true"`
-	IntegrityHash   string `gorm:"column:IntegrityHash;size:128;not null"`
-
-	excludedServices []ExcludedService `gorm:"foreignKey:ServiceID;references:ID"`
+	AllowMultipleUse bool   `gorm:"column:AllowMultipleUse;not null;default:false"`
+	IsActive         bool   `gorm:"column:IsActive;default:true"`
+	IntegrityHash    string `gorm:"column:IntegrityHash;size:128;not null"`
 }
 
 // خدماتی که سازمان پوشش نمیدهد
@@ -112,30 +110,31 @@ func (r *gormRepo) Create(item *ServiceItem) error { return r.db.Create(item).Er
 // FindByID خدمت را با شناسه برمی‌گرداند.
 func (r *gormRepo) FindByID(id uint) (*ServiceItem, error) {
 	var item ServiceItem
-	err := r.db.Where("ID = ?", id).Preload("excludedServices").First(&item).Error
+	err := r.db.Where("ID = ?", id).First(&item).Error
 	return &item, err
 }
 
 // FindByServiceCode خدمت را با کد خدمت برمی‌گرداند.
 func (r *gormRepo) FindByServiceCode(code string) (*ServiceItem, error) {
 	var item ServiceItem
-	err := r.db.Where("ServiceCode = ?", code).Preload("excludedServices").First(&item).Error
+	err := r.db.Where("ServiceCode = ?", code).First(&item).Error
 	return &item, err
 }
 
 // FindAll همه خدمات را به ترتیب نزولی شناسه برمی‌گرداند.
 func (r *gormRepo) FindAll() ([]ServiceItem, error) {
 	var list []ServiceItem
-	err := r.db.Order("ID DESC").Preload("excludedServices").Find(&list).Error
+	err := r.db.Order("ID").Find(&list).Error
 	return list, err
 }
+
 // FindByExcludeServices همه خدمات را به جز خدمات ارسالی برمی‌گرداند؛ اگر لیست exclude خالی باشد همه خدمات را برمی‌گرداند.
 func (r *gormRepo) FindByExcludeServices(excludeServices []uint) ([]ServiceItem, error) {
 	if len(excludeServices) == 0 {
 		return r.FindAll()
 	}
 	var list []ServiceItem
-	err := r.db.Where("ID NOT IN ?", excludeServices).Preload("excludedServices").Find(&list).Error
+	err := r.db.Where("ID NOT IN ?", excludeServices).Find(&list).Error
 	if err != nil {
 		return nil, err
 	}

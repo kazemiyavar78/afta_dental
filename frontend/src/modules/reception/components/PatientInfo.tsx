@@ -1,13 +1,13 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Col, Form, Input, Radio, Row, Switch, message } from 'antd';
 import type { InputRef } from 'antd/es/input';
 import { JalaliDatePicker } from '@/platform/components/JalaliDatePicker/JalaliDatePicker';
 import { fetchPatients } from '@/modules/patients/api';
 import { useReceptionStore } from '../store/receptionStore';
 
-/** فوکوس به اولین input داخل یک ظرف */
+/** فوکوس به اولین input داخل یک ظرف — بدون جابجایی اسکرول صفحه */
 function focusInside(el: HTMLElement | null) {
-  el?.querySelector<HTMLElement>('input, textarea, .ant-select-selector')?.focus();
+  el?.querySelector<HTMLElement>('input, textarea, .ant-select-selector')?.focus({ preventScroll: true });
 }
 
 /** بخش اطلاعات بیمار — فرم فشرده دو ستونه داخل کارت */
@@ -27,12 +27,21 @@ export function PatientInfo() {
   };
   const editing = useReceptionStore((s) => s.editing);
   const isNew = useReceptionStore((s) => s.isNew);
+  const newPatientFocusToken = useReceptionStore((s) => s.newPatientFocusToken);
   const setPatient = useReceptionStore((s) => s.setPatient);
   const searching = useRef(false);
   const sexWrapRef = useRef<HTMLDivElement>(null);
   const birthWrapRef = useRef<HTMLDivElement>(null);
   const addressRef = useRef<InputRef>(null);
   const firstNameRef = useRef<InputRef>(null);
+  const nationalCodeRef = useRef<InputRef>(null);
+
+  /** پس از پذیرش جدید، فوکوس به کد ملی برای تکمیل اطلاعات */
+  useEffect(() => {
+    if (newPatientFocusToken > 0) {
+      window.setTimeout(() => nationalCodeRef.current?.focus({ preventScroll: true }), 0);
+    }
+  }, [newPatientFocusToken]);
 
   const identityLocked = patient.isExisting || (!isNew && !editing);
   const fieldsLocked = !editing || patient.isExisting;
@@ -102,7 +111,7 @@ export function PatientInfo() {
     const digits = raw.replace(/\D/g, '').slice(0, 11);
     setPatient({ mobile_phone_number: digits || null });
     if (digits.length === 11 && !fieldsLocked) {
-      window.setTimeout(() => addressRef.current?.focus(), 0);
+      window.setTimeout(() => addressRef.current?.focus({ preventScroll: true }), 0);
     }
   }
 
@@ -128,6 +137,7 @@ export function PatientInfo() {
             style={{ marginBottom: 8 }}
           >
             <Input
+              ref={nationalCodeRef}
               value={patient.national_code}
               disabled={identityLocked}
               maxLength={patient.is_foreign_national ? 20 : 10}
@@ -189,7 +199,7 @@ export function PatientInfo() {
                 style={{ width: '100%' }}
                 onChange={(v) => {
                   setPatient({ birth_date: v ?? '' });
-                  window.setTimeout(() => firstNameRef.current?.focus(), 0);
+                  window.setTimeout(() => firstNameRef.current?.focus({ preventScroll: true }), 0);
                 }}
               />
             </Form.Item>

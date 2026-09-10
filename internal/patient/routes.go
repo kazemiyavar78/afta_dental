@@ -8,6 +8,10 @@ import (
 // RegisterRoutes مسیرهای API بیمار را ثبت می‌کند.
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 	r.GET("/patients", middleware.RequirePermission("patient.read"), middleware.AuthorizationMiddleware(), h.List)
+	r.GET("/patients/last-file-number",
+		middleware.RequirePermission("patient.read", "reception.read", "reception.create"),
+		middleware.AuthorizationMiddleware(),
+		h.GetLastFileNumber)
 	r.POST("/patients", middleware.RequirePermission("patient.create"), middleware.AuthorizationMiddleware(), h.Create)
 	r.GET("/patients/:id", middleware.RequirePermission("patient.read"), middleware.AuthorizationMiddleware(), h.GetByID)
 	r.PUT("/patients/:id", middleware.RequirePermission("patient.update"), middleware.AuthorizationMiddleware(), h.Update)

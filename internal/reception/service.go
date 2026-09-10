@@ -83,6 +83,11 @@ func (s *Service) CalculateServicesWithActor(req CalculateRequest, actorID int, 
 		return &CalculateResponse{Services: []CalculatedServiceLine{}}, nil
 	}
 
+	doctorType, err := s.resolveDoctorUserType(req.DoctorID)
+	if err != nil {
+		return nil, err
+	}
+
 	var specialPct uint8
 	if req.SpecialCodeID != nil && *req.SpecialCodeID > 0 && s.specialCodeSvc != nil {
 		sc, err := s.specialCodeSvc.GetActiveForCalc(*req.SpecialCodeID, actorID, ip)
@@ -94,7 +99,15 @@ func (s *Service) CalculateServicesWithActor(req CalculateRequest, actorID int, 
 		}
 	}
 
-	lines, err := s.calculateLines(req.InsuranceID, req.AdditionalInsuranceID, req.AdditionalInsurancePercentage, req.AdditionalInsuranceCoverage, specialPct, req.Services)
+	lines, err := s.calculateLines(
+		doctorType,
+		req.InsuranceID,
+		req.AdditionalInsuranceID,
+		req.AdditionalInsurancePercentage,
+		req.AdditionalInsuranceCoverage,
+		specialPct,
+		req.Services,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +129,7 @@ func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, i
 		InsuranceID:                   req.InsuranceID,
 		AdditionalInsuranceID:         req.AdditionalInsuranceID,
 		SpecialCodeID:                 req.SpecialCodeID,
+		DoctorID:                      req.DoctorID,
 		AdditionalInsuranceCoverage:   req.AdditionalInsuranceCoverage,
 		AdditionalInsurancePercentage: req.AdditionalInsurancePercentage,
 		Services:                      req.Services,
@@ -152,22 +166,29 @@ func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, i
 	regID := uint(actorUserID)
 
 	rec := &Reception{
-		PatientID:                       patientID,
-		InsuranceID:                     req.InsuranceID,
-		AdditionalInsuranceID:           req.AdditionalInsuranceID,
-		SpecialCodeID:                   req.SpecialCodeID,
-		DoctorID:                        req.DoctorID,
-		AssistantID:                     req.AssistantID,
-		BookingDate:                     bookingDate,
-		ReceptionDate:                   receptionDate,
-		Status:                          status,
-		Description:                     req.Description,
-		Discount:                        req.Discount,
-		ReferralCode:                    req.ReferralCode,
-		AdditionalInsuranceCoverage:     req.AdditionalInsuranceCoverage,
-		AdditionalInsurancePercentage:   req.AdditionalInsurancePercentage,
-		RegisteredByID:                  &regID,
-		Services:                        toReceptionServices(0, calcLines),
+		PatientID:                     patientID,
+		InsuranceID:                   req.InsuranceID,
+		AdditionalInsuranceID:         req.AdditionalInsuranceID,
+		SpecialCodeID:                 req.SpecialCodeID,
+		DoctorID:                      req.DoctorID,
+		AssistantID:                   req.AssistantID,
+		BookingDate:                   bookingDate,
+		ReceptionDate:                 receptionDate,
+		Status:                        status,
+		Description:                   req.Description,
+		Discount:                      req.Discount,
+		ReferralCode:                  req.ReferralCode,
+		AdditionalInsuranceCoverage:   req.AdditionalInsuranceCoverage,
+		AdditionalInsurancePercentage: req.AdditionalInsurancePercentage,
+		RegisteredByID:                &regID,
+		Services:                      toReceptionServices(0, calcLines),
+	}
+
+	// بررسی ضوابط مالی فقط هنگام ذخیره قطعی پذیرش
+	if req.Save {
+		if err := s.validateFinancialRules(rec); err != nil {
+			return nil, err
+		}
 	}
 
 	// با Save=true پذیرش و تراکنش صندوق در یک تراکنش دیتابیس ذخیره می‌شوند؛
@@ -222,6 +243,7 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 			InsuranceID:                   req.InsuranceID,
 			AdditionalInsuranceID:         req.AdditionalInsuranceID,
 			SpecialCodeID:                 req.SpecialCodeID,
+			DoctorID:                      req.DoctorID,
 			AdditionalInsuranceCoverage:   req.AdditionalInsuranceCoverage,
 			AdditionalInsurancePercentage: req.AdditionalInsurancePercentage,
 			Services:                      req.Services,
@@ -372,6 +394,11 @@ func (s *Service) Navigate(cursor *uint, dir string) (*ReceptionResponse, error)
 	return s.toResponse(rec)
 }
 
+// GetNextFileNumber آخرین شماره پرونده و شماره پیشنهادی بعدی را از ماژول بیمار برمی‌گرداند.
+func (s *Service) GetNextFileNumber() (*patient.LastFileNumberResponse, error) {
+	return s.patientSvc.GetLastFileNumber()
+}
+
 // SoftDelete پذیرش را به‌صورت نرم حذف می‌کند.
 func (s *Service) SoftDelete(id uint, actorUserID int, ip string) error {
 	rec, err := s.repo.FindByID(id)
@@ -446,6 +473,9 @@ func (s *Service) validateUpsert(req UpsertReceptionRequest, requireComplete boo
 		if utf8.RuneCountInString(req.Patient.FirstName) == 0 || utf8.RuneCountInString(req.Patient.LastName) == 0 {
 			return apperror.New("BAD_REQUEST", "نام و نام خانوادگی بیمار الزامی است.", "patient name required", 400)
 		}
+	} else if len(req.Services) > 0 && req.DoctorID == nil {
+		// محاسبه تعرفه در لحظه به نوع پزشک وابسته است
+		return apperror.New("E-007", "انتخاب پزشک برای محاسبه تعرفه الزامی است.", "doctor required", 400)
 	}
 	if req.DoctorID != nil {
 		if err := s.validateDoctor(*req.DoctorID); err != nil {
@@ -475,19 +505,37 @@ func (s *Service) validateUpsert(req UpsertReceptionRequest, requireComplete boo
 	return nil
 }
 
-// validateDoctor فعال بودن و نوع کاربر پزشک را بررسی می‌کند.
+// validateDoctor فعال بودن و نوع کاربر پزشک (عمومی یا متخصص) را بررسی می‌کند.
 func (s *Service) validateDoctor(doctorID uint) error {
 	u, err := s.userSvc.GetUserByID(int(doctorID), int(doctorID), true)
 	if err != nil {
 		return apperror.New("E-003", "پزشک یافت نشد.", err.Error(), 404)
 	}
-	if u.UserType != user.UserTypeDoctor {
+	if u.UserType != user.UserTypeDoctor && u.UserType != user.UserTypeSpecialist {
 		return apperror.New("E-003", "کاربر انتخاب‌شده پزشک نیست.", "not a doctor", 400)
 	}
 	if !u.IsActive {
 		return apperror.New("E-003", "پزشک غیرفعال است.", "doctor inactive", 400)
 	}
 	return nil
+}
+
+// resolveDoctorUserType نوع کاربر پزشک را برای محاسبه تعرفه برمی‌گرداند؛ نبود پزشک خطا است.
+func (s *Service) resolveDoctorUserType(doctorID *uint) (user.UserType, error) {
+	if doctorID == nil {
+		return "", apperror.New("E-007", "انتخاب پزشک برای محاسبه تعرفه الزامی است.", "doctor required", 400)
+	}
+	u, err := s.userSvc.GetUserByID(int(*doctorID), int(*doctorID), true)
+	if err != nil {
+		return "", apperror.New("E-003", "پزشک یافت نشد.", err.Error(), 404)
+	}
+	if u.UserType != user.UserTypeDoctor && u.UserType != user.UserTypeSpecialist {
+		return "", apperror.New("E-003", "کاربر انتخاب‌شده پزشک نیست.", "not a doctor", 400)
+	}
+	if !u.IsActive {
+		return "", apperror.New("E-003", "پزشک غیرفعال است.", "doctor inactive", 400)
+	}
+	return u.UserType, nil
 }
 
 // validateAssistant نوع کاربر دستیار را بررسی می‌کند.
@@ -551,8 +599,9 @@ func (s *Service) resolvePatient(input PatientInput, actorID int, ip string, all
 	return created.ID, nil
 }
 
-// calculateLines مبالغ هر سطر خدمت را بر اساس سه حالت بیمه و درصد کد خاص محاسبه می‌کند.
+// calculateLines مبالغ هر سطر خدمت را در لحظه پذیرش بر اساس نوع پزشک، سازمان و کد خاص محاسبه می‌کند.
 func (s *Service) calculateLines(
+	doctorType user.UserType,
 	baseOrgID, suppOrgID *uint,
 	suppPct *uint8,
 	suppCoverage *int64,
@@ -569,6 +618,34 @@ func (s *Service) calculateLines(
 	if suppCoverage != nil {
 		v := *suppCoverage
 		remainingCoverage = &v
+	}
+
+	var baseOrg *organization.Response
+	var suppOrg *organization.Response
+	baseExcluded := map[uint]struct{}{}
+	suppExcluded := map[uint]struct{}{}
+
+	if baseOrgID != nil {
+		org, err := s.orgSvc.Get(*baseOrgID)
+		if err != nil {
+			return nil, err
+		}
+		baseOrg = org
+		baseExcluded, err = s.serviceSvc.ExcludedServiceIDSet(org.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if suppOrgID != nil {
+		org, err := s.orgSvc.Get(*suppOrgID)
+		if err != nil {
+			return nil, err
+		}
+		suppOrg = org
+		suppExcluded, err = s.serviceSvc.ExcludedServiceIDSet(org.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result := make([]CalculatedServiceLine, 0, len(inputs))
@@ -588,32 +665,39 @@ func (s *Service) calculateLines(
 
 		var amount, tariffAmount, orgShare, suppShare, subsidy int64
 
-		hasBase := baseOrgID != nil
-		hasSupp := suppOrgID != nil
+		hasBase := baseOrg != nil
+		hasSupp := suppOrg != nil
 
 		switch {
 		case hasBase && !hasSupp:
-			t, tErr := s.tariffSvc.GetByOrganizationAndService(*baseOrgID, item.ID)
+			// فقط پایه: محاسبه لحظه‌ای با سازمان پایه
+			_, uncovered := baseExcluded[item.ID]
+			t, tErr := tariff.CalculateServicePrice(*item, baseOrg, doctorType, uncovered)
 			if tErr != nil {
 				return nil, tErr
 			}
-			amount = t.Amount * int64(qty)
-			tariffAmount = t.TariffAmount * int64(qty)
+			amount = t.TotalAmount * int64(qty)
+			tariffAmount = t.Tariff * int64(qty)
 			orgShare = t.OrganizationShare * int64(qty)
-			subsidy = t.SubsidyShare * int64(qty)
+			subsidy = t.SubsidyAmount * int64(qty)
 			suppShare = 0
 
 		case !hasBase && hasSupp:
-			t, tErr := s.tariffSvc.GetByOrganizationAndService(*suppOrgID, item.ID)
+			// فقط تکمیلی: محاسبه با سازمان تکمیلی
+			_, uncovered := suppExcluded[item.ID]
+			t, tErr := tariff.CalculateServicePrice(*item, suppOrg, doctorType, uncovered)
 			if tErr != nil {
 				return nil, tErr
 			}
-			amount = t.Amount * int64(qty)
-			tariffAmount = t.TariffAmount * int64(qty)
+			amount = t.TotalAmount * int64(qty)
+			tariffAmount = t.Tariff * int64(qty)
 			orgShare = 0
-			subsidy = t.SubsidyShare * int64(qty)
-			if pct == 100.0 {
-				suppShare = t.SupplementaryShare * int64(qty)
+			subsidy = t.SubsidyAmount * int64(qty)
+			if uncovered {
+				// خدمت خارج‌ازپوشش: سهم تکمیلی صفر است
+				suppShare = 0
+			} else if pct == 100.0 {
+				suppShare = t.SupplementAmount * int64(qty)
 			} else {
 				suppShare = int64(float64(amount) * (pct / 100.0))
 			}
@@ -622,15 +706,22 @@ func (s *Service) calculateLines(
 			}
 
 		case hasBase && hasSupp:
-			baseTariff, tErr := s.tariffSvc.GetByOrganizationAndService(*baseOrgID, item.ID)
+			// پایه + تکمیلی: مبالغ از سازمان پایه؛ سهم تکمیلی از فرمول درصد
+			_, uncovered := baseExcluded[item.ID]
+			t, tErr := tariff.CalculateServicePrice(*item, baseOrg, doctorType, uncovered)
 			if tErr != nil {
 				return nil, tErr
 			}
-			amount = baseTariff.Amount * int64(qty)
-			tariffAmount = baseTariff.TariffAmount * int64(qty)
-			orgShare = baseTariff.OrganizationShare * int64(qty)
-			subsidy = baseTariff.SubsidyShare * int64(qty)
-			suppShare = computeSupplementaryShare(amount, orgShare, pct)
+			amount = t.TotalAmount * int64(qty)
+			tariffAmount = t.Tariff * int64(qty)
+			orgShare = t.OrganizationShare * int64(qty)
+			subsidy = t.SubsidyAmount * int64(qty)
+			if uncovered {
+				// خدمت خارج‌ازپوشش سازمان پایه: تعرفه و سهم‌ها صفر؛ تکمیلی هم صفر
+				suppShare = 0
+			} else {
+				suppShare = computeSupplementaryShare(amount, orgShare, pct)
+			}
 			if remainingCoverage != nil {
 				suppShare = clampToCoverage(suppShare, remainingCoverage)
 			}
@@ -684,8 +775,6 @@ func computeSupplementaryShare(rate, orgShare int64, pct float64) int64 {
 	}
 	return floor
 }
-
-
 
 // validateNonNegativeCash اگر سهم صندوق هر خدمت منفی باشد خطا برمی‌گرداند.
 func validateNonNegativeCash(lines []CalculatedServiceLine) error {
@@ -1002,6 +1091,112 @@ func (s *Service) PatientServiceHistory(patientID uint) ([]PatientServiceHistory
 	return out, nil
 }
 
+// regulationMatch نتیجه تطبیق یک پذیرش با ضوابط فعال است.
+type regulationMatch struct {
+	Matched        bool
+	RequiredPhotos int
+	Descriptions   []string
+}
+
+// evaluateRegulationsForReception ضوابط فعال را نسبت به پذیرش داده‌شده
+// (و پذیرش‌های قبلی همان پرونده در بازه زمانی ضابطه) بررسی می‌کند.
+func (s *Service) evaluateRegulationsForReception(rec *Reception) (*regulationMatch, error) {
+	out := &regulationMatch{}
+	if s.regulationSvc == nil || rec == nil {
+		return out, nil
+	}
+	regs, rErr := s.regulationSvc.ListActive()
+	if rErr != nil {
+		return nil, rErr
+	}
+	for _, reg := range regs {
+		if len(reg.ServiceIDs) == 0 {
+			continue
+		}
+		from := rec.ReceptionDate.AddDate(0, 0, -reg.DurationDays)
+		window, wErr := s.repo.FindPatientReceptionsInRange(rec.PatientID, from, rec.ReceptionDate)
+		if wErr != nil {
+			return nil, apperror.New("DB_ERROR", "خطا در بررسی ضوابط.", wErr.Error(), 500)
+		}
+		foundServices := map[uint]bool{}
+		for _, wr := range window {
+			// فقط پذیرش‌های تا خود این برگه (نه پذیرش‌های جدیدتر) در نظر گرفته می‌شوند.
+			if wr.ID > rec.ID {
+				continue
+			}
+			for _, svc := range wr.Services {
+				foundServices[svc.ServiceID] = true
+			}
+		}
+		allMatched := true
+		for _, sid := range reg.ServiceIDs {
+			if !foundServices[sid] {
+				allMatched = false
+				break
+			}
+		}
+		if allMatched {
+			out.Matched = true
+			if desc := strings.TrimSpace(reg.Description); desc != "" {
+				out.Descriptions = append(out.Descriptions, desc)
+			}
+			if reg.PhotoCount > out.RequiredPhotos {
+				out.RequiredPhotos = reg.PhotoCount
+			}
+		}
+	}
+	return out, nil
+}
+
+// validateFinancialRules در لحظه ثبت پذیرش جدید، ضوابط را نسبت به
+// پذیرش‌های پایان‌نیافته همان پرونده بررسی می‌کند.
+// اگر ضابطه‌ای لازم باشد، پذیرش جدید ثبت نمی‌شود و متن ضابطه برگردانده می‌شود؛
+// در غیر این صورت پذیرش‌های قبلی به‌صورت خودکار پایان می‌یابند.
+func (s *Service) validateFinancialRules(rec *Reception) error {
+	unended, err := s.repo.FindUnendedForPatient(rec.PatientID)
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن پذیرش‌های قبلی پرونده.", err.Error(), 500)
+	}
+	if len(unended) == 0 {
+		return nil
+	}
+
+	// ضوابط باید نسبت به آخرین برگه پذیرش پرونده (و زنجیره قبلی در بازه) سنجیده شود.
+	for i := range unended {
+		prev := &unended[i]
+		match, mErr := s.evaluateRegulationsForReception(prev)
+		if mErr != nil {
+			return mErr
+		}
+		if match.Matched {
+			desc := strings.Join(match.Descriptions, "؛ ")
+			if desc == "" {
+				desc = "رعایت ضوابط و آپلود عکس دندان الزامی است."
+			}
+			return apperror.New(
+				"E-018",
+				fmt.Sprintf(
+					"پذیرش قبلی شماره %d نیازمند رعایت ضوابط است و هنوز پایان نیافته: %s. ابتدا از «لیست پذیرش‌ها / پایان پذیرش» ضوابط را تکمیل کنید.",
+					prev.ID,
+					desc,
+				),
+				"previous reception requires regulation",
+				400,
+			)
+		}
+	}
+
+	// بدون نیاز به ضابطه: تایید/پایان خودکار همه پذیرش‌های قبلی باز.
+	ids := make([]uint, 0, len(unended))
+	for _, prev := range unended {
+		ids = append(ids, prev.ID)
+	}
+	if err := s.repo.MarkReceptionsEnded(ids); err != nil {
+		return apperror.New("DB_ERROR", "خطا در پایان خودکار پذیرش‌های قبلی.", err.Error(), 500)
+	}
+	return nil
+}
+
 // EndReception پایان پذیرش را با بررسی ضوابط و عکس‌ها انجام می‌دهد.
 func (s *Service) EndReception(id uint, actorID int, ip string) (*EndReceptionResponse, error) {
 	rec, err := s.repo.FindByID(id)
@@ -1023,56 +1218,53 @@ func (s *Service) EndReception(id uint, actorID int, ip string) (*EndReceptionRe
 		}, nil
 	}
 
-	prev, prevErr := s.repo.FindPreviousForPatient(rec.PatientID, rec.ID)
-	if prevErr == nil && prev != nil && !prev.ReceptionEnded {
-		prevID := prev.ID
-		return &EndReceptionResponse{
-			Success:             false,
-			ReceptionEnded:      false,
-			PreviousReceptionID: &prevID,
-			Message:             fmt.Sprintf("پذیرش قبلی شماره %d هنوز پایان نیافته است.", prevID),
-		}, nil
-	} else if prevErr != nil && !errors.Is(prevErr, gorm.ErrRecordNotFound) {
-		return nil, apperror.New("DB_ERROR", "خطا در خواندن پذیرش قبلی.", prevErr.Error(), 500)
+	// پذیرش‌های قبلی باز را در صورت نبود ضابطه به‌صورت خودکار پایان می‌دهیم؛
+	// اگر هر کدام ضابطه داشته باشد، ابتدا باید همان برگه تکمیل شود.
+	unended, uErr := s.repo.FindUnendedForPatient(rec.PatientID)
+	if uErr != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن پذیرش‌های قبلی.", uErr.Error(), 500)
+	}
+	autoEndIDs := make([]uint, 0)
+	for i := range unended {
+		prev := &unended[i]
+		if prev.ID >= rec.ID {
+			continue
+		}
+		prevMatch, pmErr := s.evaluateRegulationsForReception(prev)
+		if pmErr != nil {
+			return nil, pmErr
+		}
+		if prevMatch.Matched {
+			prevID := prev.ID
+			desc := strings.Join(prevMatch.Descriptions, "؛ ")
+			if desc == "" {
+				desc = "رعایت ضوابط و آپلود عکس دندان الزامی است."
+			}
+			return &EndReceptionResponse{
+				Success:                false,
+				ReceptionEnded:         false,
+				PreviousReceptionID:    &prevID,
+				RegulationDescriptions: prevMatch.Descriptions,
+				RequiredPhotoCount:     prevMatch.RequiredPhotos,
+				Message: fmt.Sprintf(
+					"پذیرش قبلی شماره %d نیازمند رعایت ضوابط است: %s",
+					prevID,
+					desc,
+				),
+			}, nil
+		}
+		autoEndIDs = append(autoEndIDs, prev.ID)
+	}
+	if err := s.repo.MarkReceptionsEnded(autoEndIDs); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در پایان خودکار پذیرش‌های قبلی.", err.Error(), 500)
 	}
 
-	requiredPhotos := 0
-	var descriptions []string
-	if s.regulationSvc != nil {
-		regs, rErr := s.regulationSvc.ListActive()
-		if rErr != nil {
-			return nil, rErr
-		}
-		for _, reg := range regs {
-			if len(reg.ServiceIDs) == 0 {
-				continue
-			}
-			from := rec.ReceptionDate.AddDate(0, 0, -reg.DurationDays)
-			window, wErr := s.repo.FindPatientReceptionsInRange(rec.PatientID, from, rec.ReceptionDate)
-			if wErr != nil {
-				return nil, apperror.New("DB_ERROR", "خطا در بررسی ضوابط.", wErr.Error(), 500)
-			}
-			foundServices := map[uint]bool{}
-			for _, wr := range window {
-				for _, svc := range wr.Services {
-					foundServices[svc.ServiceID] = true
-				}
-			}
-			allMatched := true
-			for _, sid := range reg.ServiceIDs {
-				if !foundServices[sid] {
-					allMatched = false
-					break
-				}
-			}
-			if allMatched {
-				descriptions = append(descriptions, reg.Description)
-				if reg.PhotoCount > requiredPhotos {
-					requiredPhotos = reg.PhotoCount
-				}
-			}
-		}
+	match, mErr := s.evaluateRegulationsForReception(rec)
+	if mErr != nil {
+		return nil, mErr
 	}
+	requiredPhotos := match.RequiredPhotos
+	descriptions := match.Descriptions
 
 	uploaded, _ := s.repo.CountPhotos(rec.ID)
 	if requiredPhotos > 0 && int(uploaded) < requiredPhotos {

@@ -117,3 +117,15 @@ export async function fetchAssistants(): Promise<DoctorUser[]> {
   const { data } = await httpClient.get<DoctorUser[] | null>('/users/assistants');
   return data ?? [];
 }
+
+/** پاسخ API شماره پرونده بعدی */
+export type NextFileNumberResponse = {
+  file_number: string;
+  next_file_number: string;
+};
+
+/** دریافت آخرین شماره پرونده و شماره پیشنهادی بعدی */
+export async function fetchNextFileNumber(): Promise<NextFileNumberResponse> {
+  const { data } = await httpClient.get<NextFileNumberResponse>('/reception/next-file-number');
+  return data;
+}
