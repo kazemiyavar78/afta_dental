@@ -29,7 +29,7 @@ type Repository interface {
 	Delete(id uuid.UUID) error
 	DeleteByUserID(userID int) error
 	CountByUserID(userID int) (int64, error)
-	DeleteOldestByUserID(userID int) error
+	DeleteOldestByUserID(userID int) (*Session, error)
 	FindAll() ([]Session, error)
 }
 
@@ -76,16 +76,22 @@ func (r *gormRepository) CountByUserID(userID int) (int64, error) {
 	return count, err
 }
 
-func (r *gormRepository) DeleteOldestByUserID(userID int) error {
+// DeleteOldestByUserID قدیمی‌ترین نشست کاربر را حذف می‌کند و همان ردیف را برمی‌گرداند.
+// userID صاحب نشست است. خروجی nil یعنی نشستی نبود. خطا یعنی حذف انجام نشده است.
+// سرویس با ردیف برگشتی رویداد پایان نشست را می‌سازد، چون بعد از حذف دیگر در پایگاه نیست.
+func (r *gormRepository) DeleteOldestByUserID(userID int) (*Session, error) {
 	var oldest Session
 	err := r.db.Where("PersonnelAccountID = ?", userID).Order("CreationTime ASC").First(&oldest).Error
 	if err == gorm.ErrRecordNotFound {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return r.db.Where("Id = ?", oldest.ID).Delete(&Session{}).Error
+	if err := r.db.Where("Id = ?", oldest.ID).Delete(&Session{}).Error; err != nil {
+		return nil, err
+	}
+	return &oldest, nil
 }
 
 func (r *gormRepository) FindAll() ([]Session, error) {

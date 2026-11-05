@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,10 +14,15 @@ type SecurityChecker interface {
 	CheckCurrentUserSecurityCode(userID int) (bool, error)
 }
 
+// sessionCloser نشست‌های یک کاربر را با دلیل ممیزی می‌بندد.
+// *session.Service همین متد را دارد.
+type sessionCloser interface {
+	DeleteAllUserSessions(ctx context.Context, userID int, actor audit.Actor, reason string) error
+}
+
 // SecurityCheckMiddleware قبل از API، SecurityCode کاربر را بررسی می‌کند.
-func SecurityCheckMiddleware(checker SecurityChecker, sessionSvc interface {
-	DeleteAllUserSessions(userID int) error
-}, auditMgr *audit.Manager) gin.HandlerFunc {
+// checker بررسی کد است و sessions حذف نشست‌ها. شکست کد، نشست‌ها را با دلیل security_code_failed می‌بندد.
+func SecurityCheckMiddleware(checker SecurityChecker, sessions sessionCloser) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if publicPaths[c.Request.URL.Path] {
 			c.Next()
@@ -43,11 +49,17 @@ func SecurityCheckMiddleware(checker SecurityChecker, sessionSvc interface {
 		}
 
 		if !valid {
-			_ = sessionSvc.DeleteAllUserSessions(uid)
+			actor := audit.SystemActor()
+			actor.IP = c.ClientIP()
+			if c.Request != nil {
+				actor.UserAgent = c.Request.UserAgent()
+			}
+			if err := sessions.DeleteAllUserSessions(c.Request.Context(), uid, actor, audit.ReasonSecurityCodeFailed); err != nil {
+				WriteError(c, err)
+				c.Abort()
+				return
+			}
 			ClearSessionCookie(c, true)
-			_ = auditMgr.LogEvent(&uid, c.ClientIP(), audit.EventDataTampering,
-				"SecurityCode کاربر نامعتبر — نشست پایان یافت")
-
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": apperror.ErrIntegrity.UserMsg,
 				"code":  apperror.ErrIntegrity.Code,

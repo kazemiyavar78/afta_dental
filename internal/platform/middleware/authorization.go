@@ -1,11 +1,24 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
+	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 )
+
+// authorizationAudit ثبت رد خواندن لاگ است و در راه‌اندازی سرور ست می‌شود.
+// nil یعنی این فرایند رویداد AUDIT_READ_DENIED نمی‌نویسد (تست‌هایی که آن را لازم ندارند).
+var authorizationAudit audit.Recorder
+
+// SetAuthorizationAudit ثبت‌کننده رد دسترسی به صفحه لاگ را نگه می‌دارد.
+// rec همان Manager سرور است. خروجی ندارد. FAU_GEN.1: تلاش ناموفق خواندن ممیزی باید بماند.
+func SetAuthorizationAudit(rec audit.Recorder) {
+	authorizationAudit = rec
+}
 
 const (
 	ContextKeyPermissions = "permissions"
@@ -58,10 +71,7 @@ func authorizePermissions(c *gin.Context) bool {
 		}
 	}
 
-	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-		"error": apperror.ErrForbidden.UserMsg,
-		"code":  apperror.ErrForbidden.Code,
-	})
+	forbid(c)
 	return false
 }
 
@@ -83,19 +93,13 @@ func authorizeRoles(c *gin.Context) bool {
 
 	roleName, exists := c.Get(ContextKeyRoleName)
 	if !exists {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error": apperror.ErrForbidden.UserMsg,
-			"code":  apperror.ErrForbidden.Code,
-		})
+		forbid(c)
 		return false
 	}
 
 	userRole, ok := roleName.(string)
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error": apperror.ErrForbidden.UserMsg,
-			"code":  apperror.ErrForbidden.Code,
-		})
+		forbid(c)
 		return false
 	}
 
@@ -105,10 +109,7 @@ func authorizeRoles(c *gin.Context) bool {
 		}
 	}
 
-	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-		"error": apperror.ErrForbidden.UserMsg,
-		"code":  apperror.ErrForbidden.Code,
-	})
+	forbid(c)
 	return false
 }
 
@@ -206,6 +207,56 @@ func IsAdmin(c *gin.Context) bool {
 	}
 	isAdmin, ok := raw.(bool)
 	return ok && isAdmin
+}
+
+// forbid پاسخ ۴۰۳ می‌دهد و اگر مسیر خواندن لاگ باشد AUDIT_READ_DENIED را ثبت می‌کند.
+// c درخواست ردشده است. اگر ثبت ممیزی شکست بخورد پاسخ ۵۰۳ است تا خطا بی‌صدا نماند.
+func forbid(c *gin.Context) {
+	if isAuditLogPath(c) {
+		if err := recordAuditReadDenied(c); err != nil {
+			WriteError(c, err)
+			c.Abort()
+			return
+		}
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+		"error": apperror.ErrForbidden.UserMsg,
+		"code":  apperror.ErrForbidden.Code,
+	})
+}
+
+// isAuditLogPath می‌گوید درخواست خواندن فهرست لاگ امنیتی است.
+// c درخواست است. خروجی true برای /api/logs و زیرمسیرهای آن است.
+func isAuditLogPath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	return path == "/api/logs" || strings.HasPrefix(path, "/api/logs/")
+}
+
+// recordAuditReadDenied رد خواندن ممیزی را با فاعل context ثبت می‌کند.
+// c درخواست است. اگر ثبت‌کننده تنظیم نشده باشد nil برمی‌گردد تا تست‌های دیگر نشکنند.
+// خروجی خطای ممیزی است وقتی ثبت‌کننده هست و نوشتن شکست می‌خورد.
+func recordAuditReadDenied(c *gin.Context) error {
+	if authorizationAudit == nil {
+		return nil
+	}
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	path := ""
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		path = c.Request.URL.Path
+	}
+	return audit.Unavailable(authorizationAudit.Record(ctx, audit.Event{
+		Type:        audit.EventAuditReadDenied,
+		Result:      audit.ResultFailure,
+		Actor:       ActorFromContext(c),
+		Target:      audit.Target{Name: path},
+		Description: "رد خواندن ممیزی",
+	}))
 }
 
 // hasPermission وجود یک مجوز در لیست را بررسی می‌کند.

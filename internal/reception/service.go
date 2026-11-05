@@ -1,6 +1,7 @@
 package reception
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -505,9 +506,16 @@ func (s *Service) validateUpsert(req UpsertReceptionRequest, requireComplete boo
 	return nil
 }
 
+// userByID کاربر را برای بررسی نوع در پذیرش می‌خواند.
+// id شناسه کاربر است. خروجی پاسخ کاربر یا خطا است. فاعل همان شناسه است چون مجوز مدیریت در این مسیر لازم نیست.
+func (s *Service) userByID(id int) (*user.UserResponse, error) {
+	uid := id
+	return s.userSvc.GetUserByID(context.Background(), uid, audit.Actor{UserID: &uid}, true)
+}
+
 // validateDoctor فعال بودن و نوع کاربر پزشک (عمومی یا متخصص) را بررسی می‌کند.
 func (s *Service) validateDoctor(doctorID uint) error {
-	u, err := s.userSvc.GetUserByID(int(doctorID), int(doctorID), true)
+	u, err := s.userByID(int(doctorID))
 	if err != nil {
 		return apperror.New("E-003", "پزشک یافت نشد.", err.Error(), 404)
 	}
@@ -525,7 +533,7 @@ func (s *Service) resolveDoctorUserType(doctorID *uint) (user.UserType, error) {
 	if doctorID == nil {
 		return "", apperror.New("E-007", "انتخاب پزشک برای محاسبه تعرفه الزامی است.", "doctor required", 400)
 	}
-	u, err := s.userSvc.GetUserByID(int(*doctorID), int(*doctorID), true)
+	u, err := s.userByID(int(*doctorID))
 	if err != nil {
 		return "", apperror.New("E-003", "پزشک یافت نشد.", err.Error(), 404)
 	}
@@ -540,7 +548,7 @@ func (s *Service) resolveDoctorUserType(doctorID *uint) (user.UserType, error) {
 
 // validateAssistant نوع کاربر دستیار را بررسی می‌کند.
 func (s *Service) validateAssistant(assistantID uint) error {
-	u, err := s.userSvc.GetUserByID(int(assistantID), int(assistantID), true)
+	u, err := s.userByID(int(assistantID))
 	if err != nil {
 		return apperror.New("BAD_REQUEST", "دستیار یافت نشد.", err.Error(), 404)
 	}
@@ -922,13 +930,13 @@ func (s *Service) toResponse(rec *Reception) (*ReceptionResponse, error) {
 		resp.Patient = p
 	}
 	if rec.DoctorID != nil {
-		if d, err := s.userSvc.GetUserByID(int(*rec.DoctorID), int(*rec.DoctorID), true); err == nil {
+		if d, err := s.userByID(int(*rec.DoctorID)); err == nil {
 			resp.DoctorName = d.Name + " " + d.Family
 			resp.DoctorMedicalCode = d.MedicalCode
 		}
 	}
 	if rec.AssistantID != nil {
-		if a, err := s.userSvc.GetUserByID(int(*rec.AssistantID), int(*rec.AssistantID), true); err == nil {
+		if a, err := s.userByID(int(*rec.AssistantID)); err == nil {
 			resp.AssistantName = a.Name + " " + a.Family
 		}
 	}

@@ -36,7 +36,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	user, sess, err := h.service.HandleUserLogin(req, c.ClientIP(), c.GetHeader("User-Agent"))
+	user, sess, err := h.service.HandleUserLogin(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -53,15 +53,14 @@ func (h *Handler) Login(c *gin.Context) {
 
 // Logout خروج کاربر.
 func (h *Handler) Logout(c *gin.Context) {
-	userID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := userID.(int)
-
 	sessionID, _ := c.Get(middleware.ContextKeySessionID)
 	if sid, ok := sessionID.(uuid.UUID); ok {
-		_ = h.sessionSvc.DeleteSession(sid, uid, true, c.ClientIP())
+		if err := h.sessionSvc.DeleteSession(c.Request.Context(), sid, middleware.ActorFromContext(c), true); err != nil {
+			middleware.WriteError(c, err)
+			return
+		}
 	}
 
-	_ = h.service.HandleLogout("", uid, c.ClientIP())
 	middleware.ClearSessionCookie(c, h.secure)
 	c.SetCookie(middleware.CSRFCookieName, "", -1, "/", "", h.secure, false)
 
@@ -75,10 +74,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
-
-	resp, err := h.service.CreateUser(req, uid, c.ClientIP())
+	resp, err := h.service.CreateUser(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -97,11 +93,9 @@ func (h *Handler) GetUser(c *gin.Context) {
 		return
 	}
 
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
 	canManage := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.read")
 
-	resp, err := h.service.GetUserByID(uri.ID, uid, canManage)
+	resp, err := h.service.GetUserByID(c.Request.Context(), uri.ID, middleware.ActorFromContext(c), canManage)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -156,11 +150,9 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
 	canManage := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.update")
 
-	resp, err := h.service.UpdateUser(uri.ID, req, uid, canManage, c.ClientIP())
+	resp, err := h.service.UpdateUser(c.Request.Context(), uri.ID, req, middleware.ActorFromContext(c), canManage)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -176,10 +168,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := userID.(int)
-
-	if err := h.service.ChangePassword(uid, req, c.ClientIP()); err != nil {
+	if err := h.service.ChangePassword(c.Request.Context(), middleware.ActorFromContext(c), req); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -244,8 +233,7 @@ func (h *Handler) CreateRole(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.CreateRole(req, uid.(int), c.ClientIP())
+	resp, err := h.service.CreateRole(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -266,8 +254,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.UpdateRole(uri.ID, req, uid.(int), c.ClientIP())
+	resp, err := h.service.UpdateRole(c.Request.Context(), uri.ID, req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -284,8 +271,7 @@ func (h *Handler) DeleteRole(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	if err := h.service.DeleteRole(uri.ID, uid.(int), c.ClientIP()); err != nil {
+	if err := h.service.DeleteRole(c.Request.Context(), uri.ID, middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -309,10 +295,7 @@ func (h *Handler) UpdateSecuritySetting(c *gin.Context) {
 		return
 	}
 
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
-
-	if err := h.service.UpdateSecuritySetting(req.ID, req.Value, uid, c.ClientIP()); err != nil {
+	if err := h.service.UpdateSecuritySetting(c.Request.Context(), req.ID, req.Value, middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -341,7 +324,7 @@ func (h *Handler) GetUserProfile(c *gin.Context) {
 	userID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := userID.(int)
 
-	userData, err := h.service.GetUserByID(uid, uid, true)
+	userData, err := h.service.GetUserByID(c.Request.Context(), uid, middleware.ActorFromContext(c), true)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -427,11 +410,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		return
 	}
 
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
 	canManageOthers := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.listSessions")
 
-	if err := h.sessionSvc.DeleteSession(sessionID, uid, canManageOthers, c.ClientIP()); err != nil {
+	if err := h.sessionSvc.DeleteSession(c.Request.Context(), sessionID, middleware.ActorFromContext(c), canManageOthers); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}

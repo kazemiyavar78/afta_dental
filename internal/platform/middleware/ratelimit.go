@@ -7,8 +7,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
-	"github.com/tpdenta/afta-reception/internal/platform/security/loginguard"
+	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 )
+
+// loginIPGuard قفل IP و اجازه یک LOGIN_BLOCKED در دقیقه را می‌دهد.
+// *loginguard.Guard همین متدها را دارد.
+type loginIPGuard interface {
+	CheckIPLock(ip string) error
+	AllowBlockedLoginLog(ip string) bool
+}
 
 // rateLimitEntry ورودی شمارنده نرخ درخواست.
 type rateLimitEntry struct {
@@ -48,17 +55,42 @@ func RateLimiterMiddleware(maxPerMinute int) gin.HandlerFunc {
 	}
 }
 
-// LoginRateLimiterMiddleware محدودیت سخت‌گیرانه‌تر برای /api/login با استفاده از LoginAttempts.
-func LoginRateLimiterMiddleware(guard *loginguard.Guard) gin.HandlerFunc {
+// LoginRateLimiterMiddleware درخواست را در زمان قفل IP قطع می‌کند و حداکثر یک LOGIN_BLOCKED در دقیقه می‌نویسد.
+// guard وضعیت قفل را می‌داند. rec ثبت ممیزی است. هر دو با HandleUserLogin روی یک Guard شریک‌اند.
+// خروجی میان‌افزار است. R1-18: دلیل رویداد ip_locked است.
+func LoginRateLimiterMiddleware(guard loginIPGuard, rec audit.Recorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
-		if err := guard.CheckIPLock(ip); err != nil {
-			WriteError(c, err)
-			c.Abort()
+		err := guard.CheckIPLock(ip)
+		if err == nil {
+			c.Next()
 			return
 		}
-		c.Next()
+		if app, ok := err.(*apperror.AppError); ok && app.Code == apperror.ErrIPLocked.Code && guard.AllowBlockedLoginLog(ip) {
+			if recErr := recordLoginBlocked(c, rec); recErr != nil {
+				WriteError(c, recErr)
+				c.Abort()
+				return
+			}
+		}
+		WriteError(c, err)
+		c.Abort()
 	}
+}
+
+// recordLoginBlocked رد ورود به‌خاطر قفل IP را با فاعل درخواست ثبت می‌کند.
+// c درخواست است و rec ثبت‌کننده. خروجی خطای ممیزی یا nil است.
+func recordLoginBlocked(c *gin.Context, rec audit.Recorder) error {
+	if rec == nil {
+		return audit.Unavailable(apperror.ErrInternal)
+	}
+	return audit.Unavailable(rec.Record(c.Request.Context(), audit.Event{
+		Type:        audit.EventLoginBlocked,
+		Result:      audit.ResultFailure,
+		Reason:      audit.ReasonIPLocked,
+		Actor:       ActorFromContext(c),
+		Description: "رد ورود؛ نشانی IP قفل است",
+	}))
 }
 
 // SkipRateLimitForLogin علامت‌گذاری مسیر لاگین (برای استفاده در router).

@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,6 +9,32 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/integrity"
 	"gorm.io/gorm"
 )
+
+// memAudit ثبت ممیزی را در حافظه نگه می‌دارد.
+// این بسته نمی‌تواند testutil را وارد کند چون testutil به session و session به settings وابسته است.
+type memAudit struct {
+	events []audit.Event
+	err    error
+}
+
+// Record رویداد را ذخیره می‌کند. ctx نادیده گرفته می‌شود مگر لغو شده باشد. e رویداد است.
+func (m *memAudit) Record(ctx context.Context, e audit.Event) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if m.err != nil {
+		return m.err
+	}
+	m.events = append(m.events, e)
+	return nil
+}
+
+// RecordTx همان Record است. tx در این تست باز نمی‌شود.
+func (m *memAudit) RecordTx(tx *gorm.DB, e audit.Event) error {
+	return m.Record(context.Background(), e)
+}
 
 // TestSigner_SignSettings مسیر خوشحال امضای تنظیمات را بررسی می‌کند.
 func TestSigner_SignSettings(t *testing.T) {
@@ -44,7 +71,13 @@ func (m *memSettingsRepo) FindAll(bool) ([]SecuritySetting, error) { return nil,
 
 func (m *memSettingsRepo) Upsert(*SecuritySetting) error { return nil }
 
-func (m *memSettingsRepo) FindByID(int) (*SecuritySetting, error) {
+func (m *memSettingsRepo) FindByID(id int) (*SecuritySetting, error) {
+	for _, row := range m.rows {
+		if row.ID == id {
+			cp := *row
+			return &cp, nil
+		}
+	}
 	return nil, gorm.ErrRecordNotFound
 }
 
@@ -53,21 +86,12 @@ func (m *memSettingsRepo) DeleteByName(name string) error {
 	return nil
 }
 
-type recordingAuditor struct {
-	events []string
-}
-
-func (r *recordingAuditor) LogEvent(userID *int, ip, eventType, description string) error {
-	r.events = append(r.events, eventType+"|"+description)
-	return nil
-}
-
 // TestR1_24_RemoveRetiredCheckpointAuditsOnce ردیف قدیمی را حذف می‌کند، یک SETTING_REMOVED می‌نویسد و بار دوم ساکت است.
 func TestR1_24_RemoveRetiredCheckpointAuditsOnce(t *testing.T) {
 	repo := &memSettingsRepo{rows: map[string]*SecuritySetting{
 		retiredLastVerifiedEventSetting: {SettingName: retiredLastVerifiedEventSetting, SettingValue: "6"},
 	}}
-	aud := &recordingAuditor{}
+	aud := &memAudit{}
 	svc := &Service{repo: repo, audit: aud}
 	if err := svc.RemoveRetiredChainCheckpoint(); err != nil {
 		t.Fatalf("حذف اول: %v", err)
@@ -81,10 +105,47 @@ func TestR1_24_RemoveRetiredCheckpointAuditsOnce(t *testing.T) {
 	if len(aud.events) != 1 {
 		t.Fatalf("باید یک رویداد حذف ثبت شود، %d ثبت شد", len(aud.events))
 	}
-	if !strings.HasPrefix(aud.events[0], audit.EventSettingRemoved+"|") {
-		t.Fatalf("نوع رویداد نادرست است: %s", aud.events[0])
+	got := aud.events[0]
+	if got.Type != audit.EventSettingRemoved {
+		t.Fatalf("نوع رویداد نادرست است: %s", got.Type)
 	}
-	if strings.Contains(aud.events[0], "SettingValue") {
-		t.Fatal("مقدار تنظیم نباید در توضیح رویداد باشد")
+	if strings.Contains(got.Description, "SettingValue") || got.Actor.Username != "system" {
+		t.Fatalf("رویداد حذف نادرست است: %+v", got)
+	}
+}
+
+// TestR1_17_SettingChangedRecordsBeforeAndAfter مقدار قبلی را قبل از نوشتن می‌خواند و برچسب فارسی را هدف می‌گذارد.
+func TestR1_17_SettingChangedRecordsBeforeAndAfter(t *testing.T) {
+	repo := &memSettingsRepo{rows: map[string]*SecuritySetting{
+		MaximumNumberOfFailedLogin: {
+			ID:           4,
+			SettingName:  MaximumNumberOfFailedLogin,
+			SettingValue: "5",
+		},
+	}}
+	aud := &memAudit{}
+	svc := &Service{
+		repo:   repo,
+		signer: integrity.NewSigner("test-integrity-key-32bytes-long!!"),
+		audit:  aud,
+	}
+	actorID := 3
+	actor := audit.Actor{UserID: &actorID, Username: "sara", IP: "198.51.100.8"}
+	if err := svc.UpdateSettingByID(context.Background(), 4, "7", actor); err != nil {
+		t.Fatalf("به‌روزرسانی: %v", err)
+	}
+	if len(aud.events) != 1 {
+		t.Fatalf("باید یک SETTING_CHANGED باشد، %d ثبت شد", len(aud.events))
+	}
+	got := aud.events[0]
+	if got.Type != audit.EventSettingChanged || got.Actor.Username != "sara" {
+		t.Fatalf("فاعل یا نوع نادرست است: %+v", got)
+	}
+	if got.Target.Name != SettingsDicFN[MaximumNumberOfFailedLogin] || got.Target.Type != audit.TargetSetting {
+		t.Fatalf("هدف باید برچسب فارسی تنظیم باشد: %+v", got.Target)
+	}
+	details, ok := got.Details.(map[string]string)
+	if !ok || details["key"] != MaximumNumberOfFailedLogin || details["before"] != "5" || details["after"] != "7" {
+		t.Fatalf("جزئیات قبل و بعد نادرست است: %#v", got.Details)
 	}
 }

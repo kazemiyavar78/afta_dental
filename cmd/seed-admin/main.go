@@ -2,12 +2,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/config"
 	"github.com/tpdenta/afta-reception/internal/platform/db"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
@@ -43,10 +45,6 @@ func main() {
 	repo := user.NewRepository(database)
 	service := user.NewService(database, signer, userEncrypt, nil, auditMgr, nil, nil)
 
-
-
-
-
 	existing, err := repo.FindByUsername(username)
 	if err == nil && existing != nil {
 		fmt.Printf("کاربر %s از قبل وجود دارد (ID=%d)\n", username, existing.ID)
@@ -62,11 +60,15 @@ func main() {
 		permissionIDs[i] = permission.ID
 	}
 
-	service.CreateRole(user.CreateRoleRequest{
-		Name:        "Admin",
-		Description: "مدیر سیستم",
+	if _, err := service.CreateRole(context.Background(), user.CreateRoleRequest{
+		Name:          "Admin",
+		Description:   "مدیر سیستم",
 		PermissionIDs: permissionIDs,
-	}, 0, "Admin")
+	}, audit.SystemActor()); err != nil {
+		if app, ok := err.(*apperror.AppError); !ok || app.Code != "VALIDATION_ERROR" {
+			log.Fatalf("ایجاد نقش Admin: %v", err)
+		}
+	}
 
 	adminRole, err := repo.FindRoleByName("Admin")
 	if err != nil {

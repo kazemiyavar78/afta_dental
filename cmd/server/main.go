@@ -152,6 +152,8 @@ func main() {
 	loginGuard := loginguard.NewGuard(database, settingsSvc)
 
 	userSvc := user.NewService(database, signer, userEncryptSvc, settingsSvc, auditMgr, sessionSvc, loginGuard)
+	sessionSvc.SetAccountNamer(userSvc.UsernameByID)
+	middleware.SetAuthorizationAudit(auditMgr)
 	if err := userSvc.SyncPermissions(); err != nil {
 		log.Printf("هشدار: همگام‌سازی مجوزها: %v", err)
 	}
@@ -181,12 +183,12 @@ func main() {
 	r.Use(middleware.RateLimiterMiddleware(cfg.RateLimitPerMinute))
 
 	api := r.Group("/api")
-	api.Use(middleware.LoginRateLimiterMiddleware(loginGuard))
+	api.Use(middleware.LoginRateLimiterMiddleware(loginGuard, auditMgr))
 	api.Use(middleware.SessionMiddleware(sessionSvc, cfg.SecureCookies, userSvc.UsernameByID))
 	api.Use(middleware.SetRoleMiddleware(userSvc.GetRoleName))
 	api.Use(middleware.SetPermissionsMiddleware(userSvc.GetAuthPermissions))
 	api.Use(middleware.CSRFMiddleware(cfg.CSRFHMACKey, auditMgr))
-	api.Use(middleware.SecurityCheckMiddleware(userSvc, sessionSvc, auditMgr))
+	api.Use(middleware.SecurityCheckMiddleware(userSvc, sessionSvc))
 	api.Use(middleware.AuthorizationMiddleware())
 
 	// health check
@@ -215,7 +217,7 @@ func main() {
 		if recalcErr != nil {
 			log.Printf("هشدار: بازمحاسبه هش سازمان‌ها: %v", recalcErr)
 		} else {
-			if err := settingsSvc.UpdateSetting(settings.OrgIntegrityHashMigrationV2, "1", 0, "startup"); err != nil {
+			if err := settingsSvc.UpdateSetting(context.Background(), settings.OrgIntegrityHashMigrationV2, "1", audit.SystemActor()); err != nil {
 				log.Printf("هشدار: ثبت فلگ مهاجرت هش سازمان: %v", err)
 			} else {
 				log.Printf("مهاجرت: هش یکپارچگی %d سازمان بازمحاسبه شد", n)
@@ -229,7 +231,7 @@ func main() {
 		if recalcErr != nil {
 			log.Printf("هشدار: بازمحاسبه هش سازمان‌ها (IsFree): %v", recalcErr)
 		} else {
-			if err := settingsSvc.UpdateSetting(settings.OrgIntegrityHashMigrationV3, "1", 0, "startup"); err != nil {
+			if err := settingsSvc.UpdateSetting(context.Background(), settings.OrgIntegrityHashMigrationV3, "1", audit.SystemActor()); err != nil {
 				log.Printf("هشدار: ثبت فلگ مهاجرت هش IsFree: %v", err)
 			} else {
 				log.Printf("مهاجرت IsFree: هش یکپارچگی %d سازمان بازمحاسبه شد", n)
@@ -275,7 +277,7 @@ func main() {
 	receptionHandler := reception.NewHandler(receptionSvc)
 	reception.RegisterRoutes(api, receptionHandler)
 
-	logsHandler := logs.NewHandler(auditMgr.Repository())
+	logsHandler := logs.NewHandler(auditMgr.Repository(), auditMgr)
 	logs.RegisterRoutes(api, logsHandler)
 
 	reportHandler := report.NewHandler(report.NewService(database))

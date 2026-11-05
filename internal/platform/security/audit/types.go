@@ -34,6 +34,7 @@ const (
 	EventSessionCreated    = "SESSION_CREATED"
 	EventSessionTerminated = "SESSION_TERMINATED"
 	EventLogout            = "LOGOUT"
+	EventLoginFailed       = "LOGIN_FAILED"
 	EventLoginBlocked      = "LOGIN_BLOCKED"
 	EventIPLocked          = "IP_LOCKED"
 	EventAccountLocked     = "ACCOUNT_LOCKED"
@@ -59,10 +60,8 @@ const (
 
 // انواع منسوخ. برای خواندن ردیف‌های قدیمی می‌مانند و دیگر ثبت نمی‌شوند.
 const (
-	// Deprecated: ردیف قدیمی ورود موفق. ثبت جدید از مسیر ورود و SESSION_CREATED است.
+	// Deprecated: ردیف قدیمی ورود موفق. ثبت جدید SESSION_CREATED است.
 	EventLoginSuccess = "LOGIN_SUCCESS"
-	// Deprecated: ردیف قدیمی ورود ناموفق. ثبت جدید LOGIN_BLOCKED با Reason است.
-	EventLoginFailed = "LOGIN_FAILED"
 	// Deprecated: ردیف قدیمی تغییر تنظیم. ثبت جدید SETTING_CHANGED است.
 	EventSecuritySettingChange = "SECURITY_SETTING_CHANGE"
 	// Deprecated: ردیف قدیمی تغییر داده. ثبت جدید USER_* یا ENTITY_* است.
@@ -109,6 +108,7 @@ var eventCatalog = map[string]EventSpec{
 	EventSessionCreated:        {Label: "ایجاد نشست", Severity: SeverityNormal},
 	EventSessionTerminated:     {Label: "پایان نشست", Severity: SeverityHigh},
 	EventLogout:                {Label: "خروج", Severity: SeverityNormal},
+	EventLoginFailed:           {Label: "ورود ناموفق", Severity: SeverityHigh},
 	EventLoginBlocked:          {Label: "رد ورود", Severity: SeverityHigh},
 	EventIPLocked:              {Label: "قفل نشانی IP", Severity: SeverityCritical},
 	EventAccountLocked:         {Label: "قفل حساب", Severity: SeverityCritical},
@@ -131,7 +131,6 @@ var eventCatalog = map[string]EventSpec{
 	EventEntityRestored:        {Label: "بازیابی رکورد", Severity: SeverityNormal},
 	EventUpload:                {Label: "بارگذاری فایل", Severity: SeverityNormal},
 	EventLoginSuccess:          {Label: "ورود موفق", Severity: SeverityNormal, Deprecated: true},
-	EventLoginFailed:           {Label: "ورود ناموفق", Severity: SeverityHigh, Deprecated: true},
 	EventSecuritySettingChange: {Label: "تغییر تنظیم امنیتی", Severity: SeverityHigh, Deprecated: true},
 	EventUserDataChange:        {Label: "تغییر داده", Severity: SeverityNormal, Deprecated: true},
 	EventLogCleanup:            {Label: "پاک‌سازی لاگ", Severity: SeverityNormal, Deprecated: true},

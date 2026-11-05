@@ -102,17 +102,32 @@ func (r *gormRepository) CleanupStale(olderThan time.Duration) error {
 }
 
 // Guard سرویس محدودیت ورود و ساعات کاری.
+// blocks شمارنده مشترک LOGIN_BLOCKED است تا میان‌افزار و ورود کاربر یک IP را دوبار در یک دقیقه ننویسند.
 type Guard struct {
 	repo     Repository
 	settings *settings.Service
+	blocks   *BlockedLoginLog
 }
 
 // NewGuard نمونه Guard می‌سازد.
+// db اتصال پایگاه است و settingsSvc مدت قفل و ساعات کاری را می‌دهد.
+// خروجی گارد با شمارنده حافظه‌ای ورودِ ردشده در زمان قفل است.
 func NewGuard(db *gorm.DB, settingsSvc *settings.Service) *Guard {
 	return &Guard{
 		repo:     NewRepository(db),
 		settings: settingsSvc,
+		blocks:   NewBlockedLoginLog(),
 	}
+}
+
+// AllowBlockedLoginLog می‌گوید برای این IP باید LOGIN_BLOCKED ثبت شود یا نه.
+// ip نشانی درخواست است. خروجی true حداکثر یک بار در هر دقیقه برای همان IP است.
+// R1-18: میان‌افزار و HandleUserLogin هر دو همین متد را روی یک نمونه Guard صدا می‌زنند.
+func (g *Guard) AllowBlockedLoginLog(ip string) bool {
+	if g == nil || g.blocks == nil {
+		return true
+	}
+	return g.blocks.Allow(ip)
 }
 
 // CheckIPLock بررسی قفل بودن IP.
@@ -128,21 +143,27 @@ func (g *Guard) CheckIPLock(ip string) error {
 }
 
 // RecordFailedLogin تلاش ناموفق را ثبت می‌کند.
-func (g *Guard) RecordFailedLogin(ip string) error {
+// ip نشانی درخواست است. locked یعنی بعد از همین تلاش قفل IP فعال است.
+// lockMinutes مدت قفل از تنظیم است تا رویداد IP_LOCKED همان عدد را بنویسد.
+// خطا یعنی شمارنده در پایگاه به‌روز نشده است.
+func (g *Guard) RecordFailedLogin(ip string) (locked bool, lockMinutes int, err error) {
 	maxFailed, _ := g.settings.GetSettingInt(settings.MaximumNumberOfFailedLogin)
 	if maxFailed <= 0 {
 		maxFailed = 5
 	}
-	lockMinutes, _ := g.settings.GetSettingInt(settings.MaximumTimeOfUserIpBeingLocked)
+	lockMinutes, _ = g.settings.GetSettingInt(settings.MaximumTimeOfUserIpBeingLocked)
 	if lockMinutes <= 0 {
 		lockMinutes = 30
 	}
 
-	_, err := g.repo.RecordFailedAttempt(ip, maxFailed, lockMinutes)
+	attempt, err := g.repo.RecordFailedAttempt(ip, maxFailed, lockMinutes)
 	if err != nil {
-		return apperror.New("DB_ERROR", "خطا در ثبت تلاش ناموفق.", err.Error(), 500)
+		return false, 0, apperror.New("DB_ERROR", "خطا در ثبت تلاش ناموفق.", err.Error(), 500)
 	}
-	return nil
+	if attempt != nil && attempt.LockedUntil != nil && attempt.LockedUntil.After(time.Now().UTC()) {
+		return true, lockMinutes, nil
+	}
+	return false, lockMinutes, nil
 }
 
 // ResetLoginAttempts پس از ورود موفق شمارنده را صفر می‌کند.

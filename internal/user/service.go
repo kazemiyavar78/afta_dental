@@ -1,7 +1,7 @@
 package user
 
 import (
-	"fmt"
+	"context"
 	"time"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
@@ -16,16 +16,38 @@ import (
 	"gorm.io/gorm"
 )
 
+// passwordChecker سیاست رمز را چک می‌کند. *passwordpolicy.Validator همین متد را دارد.
+type passwordChecker interface {
+	IsValidPassword(password string) (bool, []string)
+}
+
+// loginGate قفل IP، ساعت کاری و شمارنده LOGIN_BLOCKED را می‌دهد.
+// *loginguard.Guard همین متدها را دارد تا تست ورود بدون پایگاه بماند.
+type loginGate interface {
+	CheckIPLock(ip string) error
+	RecordFailedLogin(ip string) (locked bool, lockMinutes int, err error)
+	ResetLoginAttempts(ip string) error
+	CheckWorkHours(isAdmin bool) error
+	AllowBlockedLoginLog(ip string) bool
+}
+
+// sessionOpener ساخت نشست و اعمال سقف را انجام می‌دهد.
+// *session.Service همین متد را دارد.
+type sessionOpener interface {
+	CreateSession(ctx context.Context, userID int, ip, browser string) (*session.Session, error)
+	GetSessionsByUserID(userID int) ([]session.Session, error)
+}
+
 // Service سرویس منطق کسب‌وکار کاربران.
 type Service struct {
 	repo         Repository
 	signer       *integrity.Signer
 	encryptSvc   *encryption.UserEncryptionService
 	settings     *settings.Service
-	audit        *audit.Manager
-	session      *session.Service
-	loginGuard   *loginguard.Guard
-	pwdValidator *passwordpolicy.Validator
+	audit        audit.Recorder
+	session      sessionOpener
+	loginGuard   loginGate
+	pwdValidator passwordChecker
 }
 
 // NewService نمونه Service می‌سازد.
@@ -51,13 +73,15 @@ func NewService(
 }
 
 // CreateUser کاربر جدید ایجاد می‌کند.
-func (s *Service) CreateUser(req CreateUserRequest, actorUserID int, ip string) (*UserResponse, error) {
+// ctx لغو درخواست است. req داده فرم و actor سازنده از context درخواست است.
+// خروجی پاسخ کاربر یا خطا است. ایجاد با USER_CREATED ثبت می‌شود و خطای ممیزی نادیده گرفته نمی‌شود.
+func (s *Service) CreateUser(ctx context.Context, req CreateUserRequest, actor audit.Actor) (*UserResponse, error) {
 	valid, errs := s.pwdValidator.IsValidPassword(req.Password)
 	if !valid {
 		return nil, apperror.New("WEAK_PASSWORD", errs[0], "password policy violation", 400)
 	}
 
-	if err := s.ensureAssignableRole(req.RoleID, actorUserID, ip); err != nil {
+	if err := s.ensureAssignableRole(ctx, req.RoleID, actor); err != nil {
 		return nil, err
 	}
 
@@ -103,100 +127,62 @@ func (s *Service) CreateUser(req CreateUserRequest, actorUserID int, ip string) 
 		user = created
 	}
 
-	uid := actorUserID
-	_ = s.audit.LogEvent(&uid, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ایجاد کاربر %s", user.Username))
+	if err := s.recordUserCreated(ctx, actor, user); err != nil {
+		return nil, err
+	}
 
 	return s.toResponse(user), nil
 }
 
 // HandleUserLogin ورود کاربر را مدیریت می‌کند.
-func (s *Service) HandleUserLogin(req LoginRequest, ip, browser string) (*User, *session.Session, error) {
-	if err := s.loginGuard.CheckIPLock(ip); err != nil {
+// ctx لغو درخواست است. req نام و رمز است. actor IP و مرورگر درخواست را دارد و هنوز کاربر شناخته‌شده نیست.
+// خروجی کاربر و نشست در ورود موفق است. هر شکست LOGIN_FAILED با دلیل مشخص است و خطای ممیزی برمی‌گردد.
+func (s *Service) HandleUserLogin(ctx context.Context, req LoginRequest, actor audit.Actor) (*User, *session.Session, error) {
+	if err := s.rejectLockedIP(ctx, actor, req.Username); err != nil {
 		return nil, nil, err
 	}
 
 	user, err := s.repo.FindByUsername(req.Username)
 	if err == gorm.ErrRecordNotFound {
-		_ = s.loginGuard.RecordFailedLogin(ip)
-		_ = s.audit.LogEvent(nil, ip, audit.EventLoginFailed,
-			fmt.Sprintf("ورود ناموفق — کاربر %s یافت نشد", req.Username))
-		return nil, nil, apperror.ErrInvalidCreds
+		return nil, nil, s.failLogin(ctx, actor, req.Username, audit.ReasonUserNotFound, true)
 	}
 	if err != nil {
 		return nil, nil, apperror.New("DB_ERROR", "خطا در جستجوی کاربر.", err.Error(), 500)
 	}
 
+	actor = actorWithUser(actor, user)
 	if !VerifyUserIntegrity(s.signer, user) {
-		_ = s.audit.LogEvent(&user.ID, ip, audit.EventDataTampering,
-			fmt.Sprintf("دستکاری داده کاربر %s", user.Username))
-		return nil, nil, apperror.ErrIntegrity
+		return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonIntegrityViolation, false)
 	}
-
-	if err := s.verifyRoleIntegrityForUser(&user.Role, user.ID, ip); err != nil {
+	if err := s.roleIntegrity(&user.Role); err != nil {
+		if err == apperror.ErrIntegrity {
+			return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonIntegrityViolation, false)
+		}
 		return nil, nil, err
 	}
-
-	if user.IsLocked || !user.IsActive {
-		_ = s.audit.LogEvent(&user.ID, ip, audit.EventLoginFailed,
-			fmt.Sprintf("ورود ناموفق — حساب %s قفل یا غیرفعال", user.Username))
-		return nil, nil, apperror.ErrAccountLocked
+	if user.IsLocked {
+		return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonAccountLocked, false)
 	}
-
-	rolePerms, err := s.repo.FindPermissionsByRoleID(user.RoleID)
-	if err != nil {
-		return nil, nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزها.", err.Error(), 500)
+	if !user.IsActive {
+		return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonAccountInactive, false)
 	}
-	permNames := make([]string, 0, len(rolePerms))
-	for _, p := range rolePerms {
-		permNames = append(permNames, p.Name)
-	}
-	if err := s.loginGuard.CheckWorkHours(HasAllPermissions(permNames)); err != nil {
-		_ = s.audit.LogEvent(&user.ID, ip, audit.EventLoginFailed,
-			fmt.Sprintf("ورود خارج ساعات کاری — %s", user.Username))
+	if err := s.rejectOutsideWorkHours(ctx, actor, user); err != nil {
 		return nil, nil, err
 	}
-
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		_ = s.loginGuard.RecordFailedLogin(ip)
-		_ = s.audit.LogEvent(&user.ID, ip, audit.EventLoginFailed,
-			fmt.Sprintf("رمز اشتباه — %s", user.Username))
-		return nil, nil, apperror.ErrInvalidCreds
+		return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonWrongPassword, true)
 	}
-
 	if !s.encryptSvc.CheckUserSecurityCode(user.ToSensitiveData(), user.SecurityCode) {
-		_ = s.audit.LogEvent(&user.ID, ip, audit.EventDataTampering,
-			fmt.Sprintf("SecurityCode نامعتبر — %s", user.Username))
-		return nil, nil, apperror.ErrIntegrity
+		return nil, nil, s.failLogin(ctx, actor, user.Username, audit.ReasonIntegrityViolation, false)
 	}
-
-	_ = s.loginGuard.ResetLoginAttempts(ip)
-
-	sess, err := s.session.CreateSession(user.ID, ip, browser)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	now := time.Now().UTC()
-	user.LastLoginAt = &now
-	_ = s.repo.Update(user)
-
-	_ = s.audit.LogEvent(&user.ID, ip, audit.EventLoginSuccess,
-		fmt.Sprintf("ورود موفق — %s", user.Username))
-
-	return user, sess, nil
-}
-
-// HandleLogout خروج کاربر را مدیریت می‌کند.
-func (s *Service) HandleLogout(sessionID string, userID int, ip string) error {
-	_ = s.audit.LogEvent(&userID, ip, audit.EventLogout,
-		fmt.Sprintf("خروج کاربر ID=%d", userID))
-	return nil
+	return s.finishLogin(ctx, actor, user)
 }
 
 // GetUserByID کاربر را با شناسه برمی‌گرداند.
-func (s *Service) GetUserByID(id int, actorUserID int, isAdmin bool) (*UserResponse, error) {
-	if !isAdmin && actorUserID != id {
+// ctx زمینه است. id کاربر هدف، actor خواننده و isAdmin اجازه دیدن دیگران است.
+// اگر ادمین کاربر دستکاری‌شده را ببیند رویداد یکپارچگی ثبت می‌شود و خطای ممیزی نادیده گرفته نمی‌شود.
+func (s *Service) GetUserByID(ctx context.Context, id int, actor audit.Actor, isAdmin bool) (*UserResponse, error) {
+	if !isAdmin && actorID(actor) != id {
 		return nil, apperror.ErrForbidden
 	}
 
@@ -213,8 +199,9 @@ func (s *Service) GetUserByID(id int, actorUserID int, isAdmin bool) (*UserRespo
 		if !isAdmin {
 			return nil, apperror.ErrIntegrity
 		}
-		_ = s.audit.LogEvent(&actorUserID, "", audit.EventDataTampering,
-			fmt.Sprintf("خواندن کاربر با یکپارچگی نقض‌شده ID=%d توسط ادمین", user.ID))
+		if err := s.recordIntegrity(ctx, actor, userTarget(user.ID, user.Username), "خواندن کاربر با یکپارچگی نقض‌شده"); err != nil {
+			return nil, err
+		}
 	}
 
 	return s.toResponse(user), nil
@@ -270,8 +257,10 @@ func (s *Service) ListAssistants() ([]UserResponse, error) {
 }
 
 // UpdateUser کاربر را به‌روزرسانی می‌کند.
-func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, isAdmin bool, ip string) (*UserResponse, error) {
-	if !isAdmin && actorUserID != id {
+// ctx زمینه است. id کاربر هدف، req فیلدهای اختیاری، actor ویرایشگر و isAdmin اجازه تغییر نقش و وضعیت است.
+// فقط فیلدهای عوض‌شده در USER_UPDATED می‌آیند. اگر هیچ فیلدی عوض نشود رویدادی ثبت نمی‌شود.
+func (s *Service) UpdateUser(ctx context.Context, id int, req UpdateUserRequest, actor audit.Actor, isAdmin bool) (*UserResponse, error) {
+	if !isAdmin && actorID(actor) != id {
 		return nil, apperror.ErrForbidden
 	}
 
@@ -282,6 +271,10 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, isA
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن کاربر.", err.Error(), 500)
 	}
+
+	before := *user
+	oldRole := user.Role.Name
+	newRole := oldRole
 
 	if req.Address != nil {
 		user.Address = *req.Address
@@ -305,9 +298,14 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, isA
 		if !isAdmin {
 			return nil, apperror.ErrForbidden
 		}
-		if err := s.ensureAssignableRole(*req.RoleID, actorUserID, ip); err != nil {
+		if err := s.ensureAssignableRole(ctx, *req.RoleID, actor); err != nil {
 			return nil, err
 		}
+		role, err := s.repo.FindRoleByID(*req.RoleID)
+		if err != nil {
+			return nil, apperror.New("DB_ERROR", "خطا در خواندن نقش.", err.Error(), 500)
+		}
+		newRole = role.Name
 		user.RoleID = *req.RoleID
 		// association از Preload را خالی کن تا با RoleID جدید هم‌خوان نباشد
 		user.Role = Role{}
@@ -329,16 +327,22 @@ func (s *Service) UpdateUser(id int, req UpdateUserRequest, actorUserID int, isA
 		return nil, apperror.New("DB_ERROR", "خطا در به‌روزرسانی کاربر.", err.Error(), 500)
 	}
 
-	uid := actorUserID
-	_ = s.audit.LogEvent(&uid, ip, audit.EventUserDataChange,
-		fmt.Sprintf("به‌روزرسانی کاربر %s", user.Username))
+	if err := s.recordUserUpdate(ctx, actor, before, *user, oldRole, newRole); err != nil {
+		return nil, err
+	}
 
 	updated, _ := s.repo.FindByID(id)
 	return s.toResponse(updated), nil
 }
 
 // ChangePassword رمز عبور کاربر را تغییر می‌دهد.
-func (s *Service) ChangePassword(userID int, req ChangePasswordRequest, ip string) error {
+// ctx زمینه است. actor همان کاربر نشست است. req رمز فعلی و جدید است.
+// فقط رویداد PASSWORD_CHANGED ثبت می‌شود و خود رمز در جزئیات نمی‌آید.
+func (s *Service) ChangePassword(ctx context.Context, actor audit.Actor, req ChangePasswordRequest) error {
+	if actor.UserID == nil {
+		return apperror.ErrUnauthorized
+	}
+	userID := *actor.UserID
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return apperror.ErrNotFound
@@ -373,8 +377,7 @@ func (s *Service) ChangePassword(userID int, req ChangePasswordRequest, ip strin
 		return apperror.New("DB_ERROR", "خطا در تغییر رمز.", err.Error(), 500)
 	}
 
-	_ = s.audit.LogEvent(&userID, ip, audit.EventUserDataChange, "تغییر رمز عبور")
-	return nil
+	return s.recordPasswordChanged(ctx, actor, user)
 }
 
 // UsernameByID نام کاربری را برای context نشست برمی‌گرداند.
@@ -427,8 +430,13 @@ func (s *Service) VerifyAllUsers(ip string) (bool, error) {
 	}
 	for _, u := range users {
 		if !VerifyUserIntegrity(s.signer, &u) {
-			_ = s.audit.LogEvent(&u.ID, ip, audit.EventDataTampering,
-				fmt.Sprintf("دستکاری کاربر %s", u.Username))
+			actor := audit.SystemActor()
+			if ip != "" && ip != "system" {
+				actor.IP = ip
+			}
+			if err := s.recordIntegrity(context.Background(), actor, userTarget(u.ID, u.Username), "دستکاری کاربر "+u.Username); err != nil {
+				return false, err
+			}
 			return false, nil
 		}
 	}
@@ -447,8 +455,13 @@ func (s *Service) VerifyAllRoles(ip string) (bool, error) {
 			return false, err
 		}
 		if !VerifyRoleIntegrity(s.signer, &r, permIDs) {
-			_ = s.audit.LogEvent(nil, ip, audit.EventDataTampering,
-				fmt.Sprintf("دستکاری نقش %s", r.Name))
+			actor := audit.SystemActor()
+			if ip != "" && ip != "system" {
+				actor.IP = ip
+			}
+			if err := s.recordIntegrity(context.Background(), actor, roleTarget(&r), "دستکاری نقش "+r.Name); err != nil {
+				return false, err
+			}
 			return false, nil
 		}
 	}
@@ -626,7 +639,7 @@ func (s *Service) GetMe(userID int) (*MeResponse, error) {
 		return nil, apperror.ErrIntegrity
 	}
 
-	if err := s.verifyRoleIntegrityForUser(&user.Role, user.ID, ""); err != nil {
+	if err := s.verifyRoleIntegrityForUser(context.Background(), &user.Role, audit.Actor{UserID: &userID, Username: user.Username}); err != nil {
 		return nil, err
 	}
 
@@ -696,7 +709,8 @@ func (s *Service) GetRole(id int) (*RoleDetailResponse, error) {
 }
 
 // CreateRole نقش جدید می‌سازد و مجوزها را منتسب می‌کند.
-func (s *Service) CreateRole(req CreateRoleRequest, actorID int, ip string) (*RoleDetailResponse, error) {
+// ctx زمینه است. req نام و مجوزها و actor سازنده است. خروجی جزئیات نقش یا خطا است.
+func (s *Service) CreateRole(ctx context.Context, req CreateRoleRequest, actor audit.Actor) (*RoleDetailResponse, error) {
 	if _, err := s.repo.FindRoleByName(req.Name); err == nil {
 		return nil, apperror.New("VALIDATION_ERROR", "نقش با این نام از قبل وجود دارد.", "role name exists", 400)
 	} else if err != gorm.ErrRecordNotFound {
@@ -736,12 +750,16 @@ func (s *Service) CreateRole(req CreateRoleRequest, actorID int, ip string) (*Ro
 		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش نقش.", err.Error(), 500)
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد نقش %s", role.Name))
+	if err := s.recordRoleCreated(ctx, actor, role, permissionNames(perms)); err != nil {
+		return nil, err
+	}
 	return s.toRoleDetail(role)
 }
 
 // UpdateRole پس از تایید یکپارچگی، نقش و مجوزهای آن را بروزرسانی می‌کند.
-func (s *Service) UpdateRole(id int, req UpdateRoleRequest, actorID int, ip string) (*RoleDetailResponse, error) {
+// ctx زمینه است. id نقش، req مقدار جدید و actor ویرایشگر است.
+// جزئیات فقط نام، توضیحات و مجوزهای عوض‌شده را دارد.
+func (s *Service) UpdateRole(ctx context.Context, id int, req UpdateRoleRequest, actor audit.Actor) (*RoleDetailResponse, error) {
 	role, err := s.repo.FindRoleByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.ErrNotFound
@@ -755,9 +773,15 @@ func (s *Service) UpdateRole(id int, req UpdateRoleRequest, actorID int, ip stri
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
 	}
 	if !VerifyRoleIntegrity(s.signer, role, currentPermIDs) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی نقش %d (%s)", role.ID, role.Name))
+		if err := s.recordIntegrity(ctx, actor, roleTarget(role), "نقض یکپارچگی نقش"); err != nil {
+			return nil, err
+		}
 		return nil, apperror.ErrIntegrity
+	}
+	beforeRole := *role
+	beforePerms, err := s.repo.FindPermissionsByRoleID(role.ID)
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
 	}
 
 	if req.Name != role.Name {
@@ -793,12 +817,15 @@ func (s *Service) UpdateRole(id int, req UpdateRoleRequest, actorID int, ip stri
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی نقش.", err.Error(), 500)
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی نقش %s", role.Name))
+	if err := s.recordRoleUpdated(ctx, actor, beforeRole, *role, beforePerms, perms); err != nil {
+		return nil, err
+	}
 	return s.toRoleDetail(role)
 }
 
 // DeleteRole پس از تایید یکپارچگی، نقش را حذف می‌کند.
-func (s *Service) DeleteRole(id int, actorID int, ip string) error {
+// ctx زمینه است. id نقش و actor حذف‌کننده است. خروجی خطای اعتبارسنجی، یکپارچگی یا ممیزی است.
+func (s *Service) DeleteRole(ctx context.Context, id int, actor audit.Actor) error {
 	role, err := s.repo.FindRoleByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -814,8 +841,9 @@ func (s *Service) DeleteRole(id int, actorID int, ip string) error {
 		return apperror.New("VALIDATION_ERROR", "حذف نقش ادمین (دارای تمام مجوزها) مجاز نیست.", "cannot delete admin role", 400)
 	}
 	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی نقش %d (%s)", role.ID, role.Name))
+		if err := s.recordIntegrity(ctx, actor, roleTarget(role), "نقض یکپارچگی نقش"); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 
@@ -833,8 +861,7 @@ func (s *Service) DeleteRole(id int, actorID int, ip string) error {
 	if err := s.repo.DeleteRole(role.ID); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف نقش.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف نقش %s", role.Name))
-	return nil
+	return s.recordRoleDeleted(ctx, actor, role)
 }
 
 // ListPermissions لیست مجوزهای سیستم را برمی‌گرداند.
@@ -851,7 +878,9 @@ func (s *Service) ListPermissions() ([]PermissionResponse, error) {
 }
 
 // ensureAssignableRole وجود نقش و صحت یکپارچگی آن را قبل از انتصاب بررسی می‌کند.
-func (s *Service) ensureAssignableRole(roleID int, actorID int, ip string) error {
+// ctx زمینه است. roleID نقش انتخاب‌شده و actor کسی است که انتصاب می‌کند.
+// در نقض یکپارچگی رویداد ثبت می‌شود و اگر ممیزی شکست بخورد همان خطا برمی‌گردد.
+func (s *Service) ensureAssignableRole(ctx context.Context, roleID int, actor audit.Actor) error {
 	role, err := s.repo.FindRoleByID(roleID)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.New("INVALID_ROLE", "نقش انتخاب‌شده معتبر نیست.", "role not found", 400)
@@ -864,23 +893,26 @@ func (s *Service) ensureAssignableRole(roleID int, actorID int, ip string) error
 		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
 	}
 	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("انتصاب نقش دستکاری‌شده %d (%s) رد شد", role.ID, role.Name))
+		if err := s.recordIntegrity(ctx, actor, roleTarget(role), "انتصاب نقش دستکاری‌شده رد شد"); err != nil {
+			return err
+		}
 		return apperror.New("INVALID_ROLE", "نقش انتخاب‌شده به دلیل نقض یکپارچگی قابل انتصاب نیست.", "role integrity failed", 400)
 	}
 	return nil
 }
 
-// verifyRoleIntegrityForUser یکپارچگی نقش کاربر را بررسی می‌کند؛ در صورت نقض ورود/دسترسی را قطع می‌کند.
-func (s *Service) verifyRoleIntegrityForUser(role *Role, userID int, ip string) error {
-	permIDs, err := s.repo.FindPermissionIDsByRoleID(role.ID)
-	if err != nil {
-		return apperror.New("DB_ERROR", "خطا در خواندن مجوزهای نقش.", err.Error(), 500)
-	}
-	if !VerifyRoleIntegrity(s.signer, role, permIDs) {
-		_ = s.audit.LogEvent(&userID, ip, audit.EventDataTampering,
-			fmt.Sprintf("دستکاری نقش %s — ورود/دسترسی کاربر %d رد شد", role.Name, userID))
-		return apperror.ErrIntegrity
+// verifyRoleIntegrityForUser یکپارچگی نقش را بررسی می‌کند و در صورت نقض رویداد می‌نویسد.
+// ctx زمینه است. role نقش کاربر و actor خواننده یا خود کاربر است.
+// خروجی nil یعنی نقش سالم است. خطای ممیزی جایگزین خطای یکپارچگی نمی‌شود مگر ثبت شکست بخورد.
+func (s *Service) verifyRoleIntegrityForUser(ctx context.Context, role *Role, actor audit.Actor) error {
+	if err := s.roleIntegrity(role); err != nil {
+		if err != apperror.ErrIntegrity {
+			return err
+		}
+		if recErr := s.recordIntegrity(ctx, actor, roleTarget(role), "دستکاری نقش؛ دسترسی رد شد"); recErr != nil {
+			return recErr
+		}
+		return err
 	}
 	return nil
 }
@@ -935,8 +967,10 @@ func (s *Service) toRoleDetail(role *Role) (*RoleDetailResponse, error) {
 }
 
 // UpdateSecuritySetting تنظیم امنیتی را به‌روزرسانی می‌کند.
-func (s *Service) UpdateSecuritySetting(id int, value string, actorUserID int, ip string) error {
-	return s.settings.UpdateSettingByID(id, value, actorUserID, ip)
+// ctx زمینه است. id ردیف تنظیم، value مقدار جدید و actor مدیر است.
+// خروجی خطای ذخیره یا ممیزی است. مقدار قبل و بعد در SETTING_CHANGED ثبت می‌شود.
+func (s *Service) UpdateSecuritySetting(ctx context.Context, id int, value string, actor audit.Actor) error {
+	return s.settings.UpdateSettingByID(ctx, id, value, actor)
 }
 
 // GetSecuritySettings تنظیمات امنیتی را برمی‌گرداند.
