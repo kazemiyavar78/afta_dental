@@ -43,8 +43,8 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 **Schema changes**
 
-- Startup calls GORM `AutoMigrate` through `internal/platform/migrate.Migrate` (`cmd/server/main.go`). A failed table is logged and does not stop the others.
-- `migrations/0001`–`0006` are raw SQL. `golang-migrate` is not a Go dependency. README still documents the migrate CLI. UNKNOWN: whether those SQL files are applied in current deployments.
+- Startup calls GORM `AutoMigrate` through `internal/platform/migrate.Migrate` (`cmd/server/main.go`). If any model fails, the returned error names that table and `main` exits (FPT_FLS.1). The process does not keep serving with a partial schema.
+- schema فقط با GORM AutoMigrate هنگام راه‌اندازی ساخته می‌شود؛ فایل‌های SQL قدیمی هرگز اجرا نشده بودند و حذف شدند (در تاریخچه git موجودند). Q6 روی پایگاه توسعه (۲۰۲۶-۱۱-۰۵) جدول `schema_migrations` را نداشت؛ `Users.UserType` انتهای جدول است و `Receptions` شکل مدل Go را دارد.
 
 ## 3. Folder structure
 
@@ -79,7 +79,6 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/regulation` — service-interval rules and required photos.
 - `internal/report` — SQL report queries.
 - `internal/logs` — security-event list API.
-- `migrations/` — historical SQL migrations (see section 2).
 - `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs.
 - `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
 - `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
@@ -304,7 +303,8 @@ GORM models. `gorm.Model` adds `ID`, `CreatedAt`, `UpdatedAt`, `DeletedAt` (soft
 | `settings.SecuritySetting` | `SecuritySettings` | SettingName unique, SettingValue, IntegrityHash. |
 | `audit.SecurityEvent` | `SecurityEvents` | Hash chain PrevHash / RowHash. |
 | `loginguard.LoginAttempt` | `LoginAttempts` | PK Ip, FailedCount, LockedUntil. |
-| `logretention.LogCleanupSummary` | `LogCleanupSummaries` | Written by the background worker. Not in the `Migrate` list in `main.go`. |
+| `logretention.LogCleanupSummary` | `LogCleanupSummaries` | Written by the background worker. Included in startup `Migrate`. |
+| `uploadguard.UploadCounter` | `UploadCounters` | Atomic per-user upload window counter. Included in startup `Migrate`. |
 | `patient.Patient` | `patients` | Unique national_code and file_number. IntegrityHash is AES-wrapped hash of identity fields. Fields themselves are stored in plaintext. |
 | `organization.Organization` | `Organizations` | Name, IsTakmili, IsActive, IsFree, PackageID, CenterPackageID, IntegrityHash. |
 | `organizationpackage.OrganizationPackage` | `OrganizationPackages` | Coefficients and subsidy / supplementary / organization percentages. IntegrityHash. |
@@ -389,7 +389,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 ## 9. Architectural decisions visible in the code
 
 - Modular `internal/<feature>` packages with handler, service, repository, and DTO. `main` wires them by hand. No generic DI container.
-- GORM AutoMigrate on startup instead of the SQL files under `migrations/`. README says AutoMigrate is not used. The code in `internal/platform/migrate/migrate.go` uses it. Likely so new entities ship without a separate migrate step; a failing table does not block startup.
+- Schema is only GORM AutoMigrate at startup (`internal/platform/migrate`). A failed table is named in the error and stops the process (FPT_FLS.1). The old SQL files under `migrations/` were never applied (no `schema_migrations` on the development database) and were removed; they remain in git history.
 - SQL Server-specific SQL: `MERGE` for login attempts, `sys.dm_db_partition_stats` for log size, `CONVERT`/`CAST` in patient search, custom `MSSQLUUID` so uniqueidentifier bytes match the driver.
 - Separate HMAC and AES keys. User/patient/org/service integrity stores an encrypted hash (`SecurityCode` / `IntegrityHash`). Wallet-style rows store a raw HMAC and keep older field lists so rows written before credit-account columns still verify (`VerifyTransactionIntegrity`).
 - Permission strings are code-owned and upserted on startup (`SyncPermissions`). Admin is “has every permission”, not a hardcoded role check on every route. The `Admin` role is granted every permission when it exists.
@@ -402,15 +402,16 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 
 ## 10. Known issues, gaps, and TODOs
 
-- `TestIntegration_AutoMigrate_AllModelsCreate` is written and has not been executed here. Status: waiting for `scripts/afta-check.ps1` on a development database (`[db-test-pending]`).
+- `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` are written and have not been executed here. Status: waiting for `scripts/afta-check.ps1` on a development database (`[db-test-pending]`, traceability D-01).
 - `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
-- README is behind the code: Go version, “no AutoMigrate”, golang-migrate as the migration tool, sample-only reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
+- README is behind the code on Go version (docs say 1.22+, `go.mod` is 1.26.4), sample-only wording for reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
 - `fund.update`, `fund.delete`, and `tariff.delete` permissions have no routes.
 - `User.TwoFactorEnabled` and `TwoFactorSecret` are stored and included in the user HMAC (`user/repo.go`). No login or settings handler reads or sets them.
 - `INTEGRITY_TICKER` is loaded and unused. `LOGIN_RATE_LIMIT_PER_MINUTE` is loaded and not referenced again.
-- `LogCleanupSummaries` is not in the `Migrate` call in `main.go`. The worker writes that model. UNKNOWN: whether the table is created elsewhere.
+- Column names are mixed and are left as they are. Fields from `gorm.Model` use the default naming strategy (`id`, `created_at`, `updated_at`, `deleted_at`, snake_case). Fields with an explicit `column:` tag stay PascalCase (for example `UserType`, `Balance`). Renaming them would need a data migration; this pass does not change them.
+- `fund.Fund.Balance` is `float64` and the development column type is float. Backend rules forbid float for money. It is not changed in this pass because existing rows need a data migration. Tracked as D-02 for phase 5.
 - `HasTransactions` on bank-account create/update responses is hardcoded `false` (`wallet/service.go` around the create and update mappings). List and get compute it from transactions.
 - Card payments are simulated. `SimulateCharge` always returns `Approved: true`.
 - `frontend/src/platform/components/DataTable/DataTable.tsx`: `TODO: pagination سمت سرور — فعلاً کلاینت‌ساید`.
@@ -420,7 +421,6 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 - Seed prints the admin username and password to stdout (`cmd/seed-admin/main.go`).
 - Patient, organization, and service business fields are stored in plaintext. AES protects the integrity token, not the columns.
 - Doctor and Reception roles are not created by seed. Default permissions apply only when a role with that exact name already exists and has zero permissions.
-- SQL migrations `0001`–`0006` and GORM AutoMigrate can diverge. UNKNOWN: which one a given database was built from.
 
 ## 11. Tests
 
@@ -435,7 +435,7 @@ Shared Go helpers live in `internal/platform/testutil`:
 
 `TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestComputeRowHash` calls `Manager.computeRowHash` and compares it with an independent HMAC. No injectable clock was added; `computeRowHash` already takes the timestamp.
 
-`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. It is not part of `go test ./...`.
+`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. Neither test is part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
 
 Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`.
 

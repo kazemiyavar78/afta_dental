@@ -3,6 +3,8 @@
 package migrate
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/tpdenta/afta-reception/internal/fund"
@@ -11,8 +13,10 @@ import (
 	"github.com/tpdenta/afta-reception/internal/patient"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 	"github.com/tpdenta/afta-reception/internal/platform/security/loginguard"
+	"github.com/tpdenta/afta-reception/internal/platform/security/logretention"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
+	"github.com/tpdenta/afta-reception/internal/platform/security/uploadguard"
 	"github.com/tpdenta/afta-reception/internal/platform/testutil"
 	"github.com/tpdenta/afta-reception/internal/reception"
 	"github.com/tpdenta/afta-reception/internal/regulation"
@@ -66,5 +70,62 @@ func productionModels() []interface{} {
 		&user.Permission{},
 		&user.RolePermission{},
 		&loginguard.LoginAttempt{},
+		&logretention.LogCleanupSummary{},
+		&uploadguard.UploadCounter{},
 	}
+}
+
+// schemaTableRow یک نام جدول از INFORMATION_SCHEMA.TABLES است.
+type schemaTableRow struct {
+	TableName string `gorm:"column:TABLE_NAME"`
+}
+
+// TestIntegration_LogCleanupAndUploadCounterTablesExist بعد از Migrate وجود دو جدول جاافتاده را می‌سنجد.
+// tx همان تراکنشی است که Migrate روی آن اجرا شده و در پایان rollback می‌شود.
+// اگر LogCleanupSummaries یا UploadCounters در INFORMATION_SCHEMA نباشد تست شکست می‌خورد.
+func TestIntegration_LogCleanupAndUploadCounterTablesExist(t *testing.T) {
+	testutil.WithTestTx(t, func(tx *gorm.DB) {
+		if err := Migrate(tx, productionModels()); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		required := []string{"LogCleanupSummaries", "UploadCounters"}
+		missing := missingSchemaTables(t, tx, required)
+		if len(missing) > 0 {
+			t.Fatalf("بعد از Migrate این جدول‌ها در INFORMATION_SCHEMA نیستند: %s", strings.Join(missing, ", "))
+		}
+	})
+}
+
+// missingSchemaTables نام‌هایی را برمی‌گرداند که در INFORMATION_SCHEMA.TABLES نیستند.
+// db اتصال یا تراکنش تست است و names نام جدول‌های مورد انتظار هستند.
+// خروجی زیرمجموعهٔ names است؛ فهرست خالی یعنی همه موجودند. خطای خواندن تست را متوقف می‌کند.
+func missingSchemaTables(t *testing.T, db *gorm.DB, names []string) []string {
+	t.Helper()
+	placeholders := make([]string, len(names))
+	args := make([]interface{}, len(names))
+	for i, name := range names {
+		placeholders[i] = "?"
+		args[i] = name
+	}
+	query := fmt.Sprintf(`
+		SELECT TABLE_NAME
+		FROM INFORMATION_SCHEMA.TABLES
+		WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	var found []schemaTableRow
+	if err := db.Raw(query, args...).Scan(&found).Error; err != nil {
+		t.Fatalf("خواندن INFORMATION_SCHEMA: %v", err)
+	}
+	have := make(map[string]struct{}, len(found))
+	for _, row := range found {
+		have[row.TableName] = struct{}{}
+	}
+	var missing []string
+	for _, name := range names {
+		if _, ok := have[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }

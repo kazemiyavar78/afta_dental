@@ -12,12 +12,12 @@
 | HTTP Framework | Gin |
 | پایگاه داده | SQL Server |
 | ORM | `gorm.io/gorm` + `gorm.io/driver/sqlserver` |
-| Migration | `golang-migrate/migrate` (فایل‌های SQL خام) |
+| Migration | GORM AutoMigrate هنگام راه‌اندازی سرور |
 | هش رمز | bcrypt |
 | رمزنگاری داده حساس | AES-256-GCM |
 | یکپارچگی | HMAC-SHA256 (کلید جدا از AES) |
 
-> **تصمیم ORM:** از GORM با درایور sqlserver استفاده شده تا هم خوانایی کد و هم سازگاری با migrationهای SQL خام حفظ شود. AutoMigrate استفاده **نمی‌شود**.
+> **تصمیم schema:** schema فقط با GORM AutoMigrate هنگام راه‌اندازی ساخته می‌شود؛ فایل‌های SQL قدیمی هرگز اجرا نشده بودند و حذف شدند (در تاریخچه git موجودند). اگر AutoMigrate حتی یک جدول را نسازد، سرور با پیام خطا متوقف می‌شود (FPT_FLS.1).
 
 ## ساختار پروژه
 
@@ -30,7 +30,6 @@ internal/
   organization/      ← نمونه
   fund/              ← نمونه
   tariff/            ← نمونه
-migrations/          ← فایل‌های SQL
 docs/                ← مستندات استقرار و چک‌لیست افتا
 ```
 
@@ -39,7 +38,6 @@ docs/                ← مستندات استقرار و چک‌لیست افت
 - Go 1.22+
 - Node.js 22.17.0 (فایل `.nvmrc` و فیلد `engines` در `frontend/package.json`)
 - SQL Server 2019+
-- [golang-migrate CLI](https://github.com/golang-migrate/migrate)
 
 ## راه‌اندازی
 
@@ -62,11 +60,9 @@ cp .env.example .env
 CREATE DATABASE afta_reception;
 ```
 
-### ۳. اجرای Migration
+### ۳. ساخت schema
 
-```bash
-migrate -path migrations -database "sqlserver://user:pass@host:1433?database=afta_reception&encrypt=disable" up
-```
+schema فقط با GORM AutoMigrate هنگام راه‌اندازی ساخته می‌شود؛ فایل‌های SQL قدیمی هرگز اجرا نشده بودند و حذف شدند (در تاریخچه git موجودند). دستور migrate جداگانه لازم نیست. اگر ساخت یک جدول خطا بدهد، فرایند سرور همان‌جا متوقف می‌شود.
 
 ### ۴. اجرای سرور
 

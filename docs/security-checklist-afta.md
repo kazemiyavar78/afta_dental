@@ -8,7 +8,7 @@
 
 | مورد | مسیر |
 |---|---|
-| جدول Key-Value | `migrations/0001_security_settings.up.sql` |
+| جدول Key-Value | AutoMigrate مدل `SecuritySetting` در `cmd/server/main.go` |
 | مدل | `internal/platform/security/settings/model.go` |
 | سرویس GetSettingValue / UpdateSetting | `internal/platform/security/settings/service.go` |
 | ثابت‌های کلید | `internal/platform/security/settings/keys.go` |
@@ -23,7 +23,7 @@
 
 | مورد | مسیر |
 |---|---|
-| جدول Sessions | `migrations/0002_sessions.up.sql` |
+| جدول Sessions | AutoMigrate مدل `session.Session` در `cmd/server/main.go` |
 | مدل و Repository | `internal/platform/security/session/model.go` |
 | سرویس ایجاد/حذف | `internal/platform/security/session/service.go` |
 | کوکی HttpOnly+Secure+SameSite | `internal/platform/middleware/session.go` |
@@ -38,7 +38,7 @@
 
 | مورد | مسیر |
 |---|---|
-| جدول | `migrations/0003_security_events.up.sql` |
+| جدول | AutoMigrate مدل `audit.SecurityEvent` در `cmd/server/main.go` |
 | مدل (PrevHash, RowHash, CreatedAt) | `internal/platform/security/audit/model.go` |
 | LogEvent با Hash-Chain | `internal/platform/security/audit/manager.go` |
 | VerifyChain | `internal/platform/security/audit/manager.go` |
@@ -64,7 +64,7 @@
 
 | مورد | مسیر |
 |---|---|
-| جدول UploadCounters | `migrations/0006_upload_counters_and_samples.up.sql` |
+| جدول UploadCounters | AutoMigrate مدل `uploadguard.UploadCounter` در `cmd/server/main.go` |
 | MERGE اتمیک | `internal/platform/security/uploadguard/guard.go` |
 | کلیدهای تنظیم | `settings/keys.go` → `MaximumUploadsPerWindow`, `UploadWindowMinutes` |
 
@@ -104,7 +104,7 @@
 
 | مورد | مسیر |
 |---|---|
-| جدول LoginAttempts | `migrations/0005_login_attempts.up.sql` |
+| جدول LoginAttempts | AutoMigrate مدل `loginguard.LoginAttempt` در `cmd/server/main.go` |
 | MERGE اتمیک | `loginguard/guard.go` → `RecordFailedAttempt` |
 | Reset پس از ورود موفق | `user/service.go` → `HandleUserLogin` |
 | LoginRateLimiterMiddleware | `internal/platform/middleware/ratelimit.go` |
@@ -119,7 +119,7 @@
 | Background Worker | `internal/platform/security/logretention/worker.go` |
 | sp_spaceused معادل | `audit/model.go` → `GetTableSizeMB` |
 | حذف ۱۰٪ قدیمی‌ترین | `logretention/worker.go` → `cleanupSecurityEvents` |
-| LogCleanupSummaries | `migrations/0006_upload_counters_and_samples.up.sql` |
+| LogCleanupSummaries | AutoMigrate مدل `logretention.LogCleanupSummary` در `cmd/server/main.go` |
 | Verify Integrity دوره‌ای | `logretention/worker.go` → `verifyIntegrity` |
 
 ---
