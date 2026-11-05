@@ -66,6 +66,7 @@ func productionModels() []interface{} {
 		&settings.SecuritySetting{},
 		&session.Session{},
 		&audit.SecurityEvent{},
+		&audit.AuditChainState{},
 		&user.Role{},
 		&user.Permission{},
 		&user.RolePermission{},

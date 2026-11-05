@@ -108,6 +108,7 @@ func main() {
 		&settings.SecuritySetting{},
 		&session.Session{},
 		&audit.SecurityEvent{},
+		&audit.AuditChainState{},
 		&user.Role{},
 		&user.Permission{},
 		&user.RolePermission{},
@@ -132,6 +133,10 @@ func main() {
 
 	if err := settingsSvc.SeedDefaults(); err != nil {
 		log.Printf("هشدار: seed تنظیمات: %v", err)
+	}
+	if err := settingsSvc.RemoveRetiredChainCheckpoint(); err != nil {
+		// R1-24: تا وقتی کلید checkpoint قابل ویرایش مانده، سرور بالا نمی‌آید.
+		log.Fatalf("توقف امن راه‌اندازی: حذف تنظیم بازنشسته LastVerifiedEventId ناموفق بود: %v", err)
 	}
 
 	sessionSvc := session.NewService(database, settingsSvc, auditMgr)

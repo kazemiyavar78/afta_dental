@@ -6,7 +6,6 @@ const (
 	MaximumNumberOfFailedLogin     = "MaximumNumberOfFailedLogin"
 	MaximumTimeOfUserIpBeingLocked = "MaximumTimeOfUserIpBeingLocked"
 	MaximumSizeOfLogTables         = "MaximumSizeOfLogTables"
-	LastVerifiedEventID            = "LastVerifiedEventId"
 	WorkHoursStart                 = "WorkHours_Start"
 	WorkHoursEnd                   = "WorkHours_End"
 	IsSaturdayBlocked              = "IsSaturdayBlocked"
@@ -35,7 +34,6 @@ var DefaultSettings = map[string]string{
 	MaximumNumberOfFailedLogin:     "5",
 	MaximumTimeOfUserIpBeingLocked: "30",
 	MaximumSizeOfLogTables:         "100",
-	LastVerifiedEventID:            "0",
 	WorkHoursStart:                 "08:00",
 	WorkHoursEnd:                   "18:00",
 	IsSaturdayBlocked:              "false",
@@ -63,7 +61,6 @@ var SettingsDicFN = map[string]string{
 	"MaximumNumberOfFailedLogin":     "بیشترین تعداد ورود اشتباه",
 	"MaximumTimeOfUserIpBeingLocked": "بیشترین مدت زمان قفل بودن اکانت",
 	"MaximumSizeOfLogTables":         "حداکثر تعداد لاگ",
-	"LastVerifiedEventId":            "آخرین رویداد ثبت شده",
 	"WorkHours_Start":                "ساعت شروع کاری",
 	"WorkHours_End":                  "ساعت پایان کاری",
 	"IsSaturdayBlocked":              "تعطیلی شنبه",

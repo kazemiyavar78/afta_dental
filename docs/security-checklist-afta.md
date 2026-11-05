@@ -41,8 +41,8 @@
 | جدول | AutoMigrate مدل `audit.SecurityEvent` در `cmd/server/main.go` |
 | مدل (PrevHash, RowHash, CreatedAt) | `internal/platform/security/audit/model.go` |
 | LogEvent با Hash-Chain | `internal/platform/security/audit/manager.go` |
-| VerifyChain | `internal/platform/security/audit/manager.go` |
-| Checkpoint | `settings/keys.go` → `LastVerifiedEventId` |
+| VerifyChain | `internal/platform/security/audit/chain.go` |
+| Checkpoint | `audit.AuditChainState` در جدول `AuditChainStates` (نه تنظیم `LastVerifiedEventId`) |
 | انواع رویداد (const) | `internal/platform/security/audit/types.go` |
 | تست Smoke | `internal/platform/security/audit/manager_test.go` |
 

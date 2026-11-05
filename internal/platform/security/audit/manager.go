@@ -4,21 +4,23 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-// Manager مدیریت رویدادهای امنیتی با Hash-Chain.
+// Manager رویداد امنیتی را با زنجیره هش ثبت و بررسی می‌کند.
 type Manager struct {
+	mu       sync.Mutex
 	repo     Repository
 	auditKey []byte
 }
 
-// NewManager نمونه Manager می‌سازد.
+// NewManager مدیر را با مخزن GORM و کلید HMAC زنجیره می‌سازد.
+// db اتصال پایگاه است و auditKey همان AUDIT_HMAC_KEY است، جدا از INTEGRITY_HMAC_KEY.
 func NewManager(db *gorm.DB, auditKey string) *Manager {
 	return &Manager{
 		repo:     NewRepository(db),
@@ -26,7 +28,9 @@ func NewManager(db *gorm.DB, auditKey string) *Manager {
 	}
 }
 
-// computeRowHash هش زنجیره‌ای ردیف را محاسبه می‌کند.
+// computeRowHash هش یک ردیف را از هش قبلی و فیلدهای رویداد می‌سازد.
+// prevHash هش ردیف قبل است. userID می‌تواند nil باشد. createdAt باید همان زمانی باشد که ذخیره می‌شود.
+// خروجی HMAC-SHA256 هگز است. زمان با UTC و RFC3339Nano وارد رشته می‌شود.
 func (m *Manager) computeRowHash(prevHash string, userID *int, ip, eventType, description string, createdAt time.Time) string {
 	uid := ""
 	if userID != nil {
@@ -46,67 +50,82 @@ func (m *Manager) computeRowHash(prevHash string, userID *int, ip, eventType, de
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// LogEvent رویداد امنیتی جدید با Hash-Chain ثبت می‌کند.
+// LogEvent یک رویداد را به انتهای زنجیره اضافه می‌کند.
+// userID فاعل است و اگر nil باشد بخش کاربر هش خالی می‌ماند. ip، eventType و description فیلدهای ردیف‌اند.
+// خطا یعنی درج انجام نشده است. قفل فرایند به‌علاوه UPDLOCK پایگاه جلوی PrevHash تکراری را می‌گیرد.
+// FAU_STG.1: دو درخواست همزمان نباید دو ردیف با یک هش قبلی بسازند.
 func (m *Manager) LogEvent(userID *int, ip, eventType, description string) error {
-	prevHash, err := m.repo.GetLastRowHash()
-	if err != nil {
-		return fmt.Errorf("خواندن آخرین هش: %w", err)
-	}
-
-	now := time.Now().UTC()
-	rowHash := m.computeRowHash(prevHash, userID, ip, eventType, description, now)
-
-	event := &SecurityEvent{
-		UserID:      userID,
-		Ip:          ip,
-		EventType:   eventType,
-		Description: description,
-		CreatedAt:   now,
-		PrevHash:    prevHash,
-		RowHash:     rowHash,
-	}
-
-	return m.repo.Create(event)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.repo.AppendChained(func(prevHash string) (*SecurityEvent, error) {
+		// datetimeoffset در SQL Server تا ۱۰۰ نانوثانیه ذخیره می‌کند و ساعت لینوکس ریزتر است.
+		// اگر نانوثانیهٔ کامل در هش برود، پس از خواندن ردیف هش نمی‌خواند. دقت ویندوز ۱۰۰ نانوثانیه است و اتفاقاً جور می‌شود.
+		// برش به میکروثانیه هم در Go و هم در SQL Server پایدار است.
+		createdAt := time.Now().UTC().Truncate(time.Microsecond)
+		rowHash := m.computeRowHash(prevHash, userID, ip, eventType, description, createdAt)
+		return &SecurityEvent{
+			UserID:      userID,
+			Ip:          ip,
+			EventType:   eventType,
+			Description: description,
+			CreatedAt:   createdAt,
+			PrevHash:    prevHash,
+			RowHash:     rowHash,
+		}, nil
+	})
 }
 
-// VerifyChain زنجیره هش را از یک checkpoint به بعد بررسی می‌کند.
-func (m *Manager) VerifyChain(fromID int64) (bool, error) {
-	events, err := m.repo.FindFromID(fromID)
-	if err != nil {
-		return false, err
+// TrimVerifiedPrefix فقط ردیف‌های تأییدشده با ID کمتر یا برابر LastVerifiedID را حذف می‌کند.
+// state نقطه تأیید است و limit سقف تعداد است. seal بعد از به‌روزرسانی لنگر، HMAC را می‌نویسد و نباید LogEvent صدا بزند.
+// خروجی تعداد حذف، بازه CreatedAt همان ردیف‌ها و خطا است. اگر چیزی حذف نشود هر سه تهی‌اند.
+// FAU_STG.1 / D-12: هش آخرین ردیف حذفی لنگر ردیف بعدی می‌شود.
+func (m *Manager) TrimVerifiedPrefix(state *AuditChainState, limit int, seal func(*AuditChainState)) (deleted int, from, to *time.Time, err error) {
+	if state == nil || state.LastVerifiedID <= 0 || limit <= 0 {
+		return 0, nil, nil, nil
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	var prevHash string
-	if fromID > 1 {
-		earlier, err := m.repo.FindFromID(fromID - 1)
-		if err != nil {
-			return false, err
+	var start, end time.Time
+	var saved AuditChainState
+	rows, err := m.repo.DeleteVerifiedPrefix(state.LastVerifiedID, limit, func(found []SecurityEvent) (*AuditChainState, error) {
+		if len(found) == 0 {
+			return nil, nil
 		}
-		if len(earlier) > 0 {
-			prevHash = earlier[len(earlier)-1].RowHash
+		next := *state
+		last := found[len(found)-1]
+		next.AnchorID = last.ID
+		next.AnchorHash = last.RowHash
+		if next.LastVerifiedID <= next.AnchorID {
+			next.LastVerifiedHash = next.AnchorHash
 		}
+		if seal != nil {
+			seal(&next)
+		}
+		start = found[0].CreatedAt
+		end = last.CreatedAt
+		saved = next
+		return &saved, nil
+	})
+	if err != nil || len(rows) == 0 {
+		return 0, nil, nil, err
 	}
-
-	for _, e := range events {
-		if e.PrevHash != prevHash {
-			return false, nil
-		}
-		expected := m.computeRowHash(e.PrevHash, e.UserID, e.Ip, e.EventType, e.Description, e.CreatedAt)
-		if expected != e.RowHash {
-			return false, nil
-		}
-		prevHash = e.RowHash
-	}
-
-	return true, nil
+	*state = saved
+	return len(rows), &start, &end, nil
 }
 
-// GetLastEventID آخرین شناسه رویداد را برمی‌گرداند.
-func (m *Manager) GetLastEventID() (int64, error) {
-	return m.repo.GetLastEventID()
+// LoadChainState ردیف وضعیت را می‌خواند. اگر جدول خالی باشد ردیف صفر با ID ثابت برمی‌گرداند.
+func (m *Manager) LoadChainState() (AuditChainState, error) {
+	return m.repo.LoadChainState()
 }
 
-// Repository بازگرداندن repo برای worker.
+// SaveChainState ردیف وضعیت را درج یا جایگزین می‌کند.
+// state نباید nil باشد. خطا یعنی پایگاه به‌روز نشده است.
+func (m *Manager) SaveChainState(state *AuditChainState) error {
+	return m.repo.SaveChainState(state)
+}
+
+// Repository مخزن را برای خواندن لاگ و حجم جدول برمی‌گرداند.
 func (m *Manager) Repository() Repository {
 	return m.repo
 }

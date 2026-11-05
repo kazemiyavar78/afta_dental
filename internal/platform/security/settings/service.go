@@ -12,11 +12,20 @@ import (
 	"gorm.io/gorm"
 )
 
+// retiredLastVerifiedEventSetting کلید قدیمی checkpoint در SecuritySettings است.
+// R1-24 / FMT_MTD: این نشانگر تنظیم کاربر نیست و تغییر دستی‌اش بررسی لاگ را دور می‌زد.
+const retiredLastVerifiedEventSetting = "LastVerifiedEventId"
+
+// settingAuditor ثبت رویداد تغییر تنظیم است. *audit.Manager همین متد را دارد.
+type settingAuditor interface {
+	LogEvent(userID *int, ip, eventType, description string) error
+}
+
 // Service سرویس مدیریت تنظیمات امنیتی.
 type Service struct {
 	repo   Repository
 	signer *integrity.Signer
-	audit  *audit.Manager
+	audit  settingAuditor
 }
 
 // NewService نمونه Service می‌سازد.
@@ -148,4 +157,23 @@ func (s *Service) VerifyAllIntegrity(ip string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// RemoveRetiredChainCheckpoint اگر ردیف LastVerifiedEventId مانده باشد آن را حذف می‌کند و SETTING_REMOVED می‌نویسد.
+// خروجی nil یعنی ردیفی نبود، یا حذف و رویداد ممیزی هر دو انجام شد.
+// مقدار قدیمی به AuditChainStates کپی نمی‌شود؛ بررسی اول زنجیره از صفر است.
+// R1-24 / FMT_MTD: این کلید نباید در صفحه تنظیمات بماند.
+func (s *Service) RemoveRetiredChainCheckpoint() error {
+	_, err := s.repo.FindByName(retiredLastVerifiedEventSetting)
+	if err == gorm.ErrRecordNotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := s.repo.DeleteByName(retiredLastVerifiedEventSetting); err != nil {
+		return err
+	}
+	return s.audit.LogEvent(nil, "system", audit.EventSettingRemoved,
+		"حذف تنظیم بازنشسته LastVerifiedEventId؛ وضعیت زنجیره از جدول AuditChainStates و از ابتدا بررسی می‌شود")
 }

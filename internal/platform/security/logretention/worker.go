@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
@@ -79,55 +78,95 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
+// runCycle یک دور بررسی زنجیره، پاکسازی حجم، پاکسازی قفل ورود و بررسی HMAC جدول‌ها را اجرا می‌کند.
 func (w *Worker) runCycle() {
+	// بررسی قبل از پاک‌سازی است تا همان دور فقط ردیف‌هایی حذف شوند که همین حالا تأیید شده‌اند.
+	w.verifyAuditChain()
 	w.cleanupSecurityEvents()
 	w.cleanupLoginAttempts()
 	w.verifyIntegrity()
-	w.verifyAuditChain()
 }
 
+// cleanupSecurityEvents اگر حجم SecurityEvents از سقف گذشت، فقط پیشوند تأییدشده را حذف می‌کند.
+// FAU_STG.1 / D-12: ردیف بررسی‌نشده حذف نمی‌شود و لنگر هش آخرین ردیف حذفی ذخیره می‌شود.
 func (w *Worker) cleanupSecurityEvents() {
+	if w.signer == nil {
+		log.Printf("پاکسازی لاگ رد شد: امضای یکپارچگی نیست")
+		return
+	}
 	maxSizeMB, err := w.settings.GetSettingInt(settings.MaximumSizeOfLogTables)
 	if err != nil || maxSizeMB <= 0 {
 		maxSizeMB = 100
 	}
-
 	currentSize, err := w.audit.Repository().GetTableSizeMB()
 	if err != nil {
 		log.Printf("خطا در محاسبه حجم SecurityEvents: %v", err)
 		return
 	}
-
 	if currentSize <= float64(maxSizeMB) {
 		return
 	}
-
-	count, err := w.audit.Repository().Count()
-	if err != nil || count == 0 {
+	deleteCount, ok := w.verifiedDeleteCount()
+	if !ok {
 		return
 	}
-
-	deleteCount := int(count / 10)
-	if deleteCount < 1 {
-		deleteCount = 1
+	state, err := w.audit.LoadChainState()
+	if err != nil {
+		log.Printf("خطا در خواندن وضعیت زنجیره برای پاکسازی: %v", err)
+		return
 	}
-
-	deleted, err := w.audit.Repository().DeleteOldest(deleteCount)
+	if !state.SealValid(w.signer.Verify) {
+		log.Printf("پاکسازی لاگ رد شد: یکپارچگی وضعیت زنجیره نامعتبر است")
+		return
+	}
+	deleted, from, to, err := w.audit.TrimVerifiedPrefix(&state, deleteCount, func(s *audit.AuditChainState) {
+		s.Seal(w.signer.Sign)
+	})
 	if err != nil {
 		log.Printf("خطا در پاکسازی SecurityEvents: %v", err)
 		return
 	}
+	if deleted == 0 {
+		return
+	}
+	w.writeCleanupSummary(deleted, from, to, currentSize)
+}
 
-	now := time.Now().UTC()
+// verifiedDeleteCount سقف حذف را ده درصد تعداد ردیف‌ها می‌گذارد و حداقل یک ردیف است.
+// خروجی دوم false یعنی شمارش خطا داده یا جدولی خالی است.
+func (w *Worker) verifiedDeleteCount() (int, bool) {
+	count, err := w.audit.Repository().Count()
+	if err != nil || count == 0 {
+		if err != nil {
+			log.Printf("خطا در شمارش SecurityEvents: %v", err)
+		}
+		return 0, false
+	}
+	deleteCount := int(count / 10)
+	if deleteCount < 1 {
+		deleteCount = 1
+	}
+	return deleteCount, true
+}
+
+// writeCleanupSummary خلاصه پاکسازی را با بازه واقعی تاریخ ردیف‌های حذف‌شده ذخیره می‌کند.
+// خطای درج خلاصه و خطای رویداد ممیزی هر دو در لاگ سرور می‌مانند و با _ نادیده گرفته نمی‌شوند.
+func (w *Worker) writeCleanupSummary(deleted int, from, to *time.Time, currentSize float64) {
 	summary := LogCleanupSummary{
 		TargetTable:  "SecurityEvents",
-		DeletedCount: int(deleted),
-		CreatedAt:    now,
+		DeletedCount: deleted,
+		FromDate:     from,
+		ToDate:       to,
+		CreatedAt:    time.Now().UTC().Truncate(time.Microsecond),
 	}
-	_ = w.db.Create(&summary).Error
-
-	_ = w.audit.LogEvent(nil, "system", audit.EventLogCleanup,
-		fmt.Sprintf("پاکسازی %d رکورد قدیمی SecurityEvents (حجم: %.2f MB)", deleted, currentSize))
+	if err := w.db.Create(&summary).Error; err != nil {
+		log.Printf("خطا در ثبت خلاصه پاکسازی لاگ: %v", err)
+		return
+	}
+	if err := w.audit.LogEvent(nil, "system", audit.EventLogCleanup,
+		fmt.Sprintf("پاکسازی %d رکورد قدیمی SecurityEvents (حجم: %.2f MB)", deleted, currentSize)); err != nil {
+		log.Printf("خطا در ثبت رویداد پاکسازی لاگ: %v", err)
+	}
 }
 
 func (w *Worker) cleanupLoginAttempts() {
@@ -157,22 +196,45 @@ func (w *Worker) verifyIntegrity() {
 	}
 }
 
+// verifyAuditChain زنجیره را از وضعیت ذخیره‌شده بررسی می‌کند و فقط خرابی تازه را لاگ می‌کند.
+// بررسی موفق رویداد ممیزی نمی‌سازد تا جدول لاگ هر دور پر نشود.
 func (w *Worker) verifyAuditChain() {
-	checkpointStr, err := w.settings.GetSettingValue(settings.LastVerifiedEventID)
+	if w.signer == nil {
+		log.Printf("بررسی زنجیره ممیزی رد شد: امضای یکپارچگی نیست")
+		return
+	}
+	state, err := w.audit.LoadChainState()
 	if err != nil {
+		log.Printf("خطا در خواندن وضعیت زنجیره ممیزی: %v", err)
 		return
 	}
-
-	checkpoint, _ := strconv.ParseInt(checkpointStr, 10, 64)
-	ok, err := w.audit.VerifyChain(checkpoint)
-	if err != nil || !ok {
-		_ = w.audit.LogEvent(nil, "system", audit.EventDataTampering,
-			fmt.Sprintf("شکست تأیید Hash-Chain از checkpoint %d", checkpoint))
+	// ردیف وضعیت اگر HMAC نخورد قابل اعتماد نیست و بررسی از صفر انجام می‌شود.
+	// FAU_STG.2 / R1-24: مدیر نمی‌تواند با عوض کردن یک تنظیم، checkpoint را جلو بیندازد.
+	untrusted := !state.SealValid(w.signer.Verify)
+	if untrusted {
+		log.Printf("یکپارچگی وضعیت زنجیره ممیزی نامعتبر است؛ بررسی از ابتدا")
+		state = audit.AuditChainState{}
+	}
+	lastGoodID, lastGoodHash, brokenAtID, err := w.audit.VerifyChain(state)
+	if err != nil {
+		log.Printf("خطا در بررسی زنجیره ممیزی: %v", err)
 		return
 	}
-
-	lastID, err := w.audit.GetLastEventID()
-	if err == nil && lastID > 0 {
-		_ = w.settings.UpdateSetting(settings.LastVerifiedEventID, strconv.FormatInt(lastID, 10), 0, "system")
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	report := audit.AdvanceChainState(&state, lastGoodID, lastGoodHash, brokenAtID, now)
+	state.Seal(w.signer.Sign)
+	if err := w.audit.SaveChainState(&state); err != nil {
+		log.Printf("خطا در ذخیره وضعیت زنجیره ممیزی: %v", err)
+		return
+	}
+	if !untrusted && !report {
+		return
+	}
+	description := "یکپارچگی ردیف وضعیت زنجیره ممیزی نامعتبر بود"
+	if brokenAtID != 0 {
+		description = fmt.Sprintf("شکست زنجیره ممیزی در رویداد %d", brokenAtID)
+	}
+	if err := w.audit.LogEvent(nil, "system", audit.EventDataTampering, description); err != nil {
+		log.Printf("خطا در ثبت دستکاری زنجیره ممیزی: %v", err)
 	}
 }

@@ -14,4 +14,7 @@ const (
 	EventDataTampering         = "DATA_TAMPERING"
 	EventCSRFViolation         = "CSRF_VIOLATION"
 	EventSessionRevoked        = "SESSION_REVOKED"
+	// EventSettingRemoved حذف یک تنظیم بازنشسته است.
+	// R1-24 / FMT_MTD: کلید checkpoint از صفحه تنظیمات برداشته می‌شود.
+	EventSettingRemoved = "SETTING_REMOVED"
 )

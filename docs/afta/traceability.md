@@ -48,14 +48,14 @@
 | R1-21 | Report1 | لاگ به‌روزرسانی کاربر باید بگوید کدام فیلد عوض شده است | FMT_MSA | ۱ | به‌روزرسانی کاربر | — | باز | diff فیلدها نیست. |
 | R1-22 | Report1 | صفحه «لاگ‌های سیستمی» برای همه فراخوانی‌های API، با نام کاربری، زمان، نام API، ورودی، خروجی، IP و خطا، به‌همراه فیلتر و مرتب‌سازی | FAU_GEN.1 | ۲ | وجود ندارد | — | باز | آزمون اول FAU_GEN.1 در نقشه راه. |
 | R1-23 | Report1 | تنظیمات آپلود دیده می‌شود ولی خود فرایند آپلود معلوم نیست در کدام بخش نرم‌افزار است | FDP_ITC | ۵ | آپلود عکس پذیرش، `internal/platform/security/uploadguard` | — | باز | `uploadguard` وصل نیست (D-27). |
-| R1-24 | Report1 | وظیفه یک تنظیم روی صفحه تنظیمات نامشخص است | FAU_STG.2، FMT_MTD | ۳ | `LastVerifiedEventId` | — | باز | نقشه راه: نشانگر داخلی worker است، تنظیم کاربر نیست و تغییر دستی‌اش بررسی صحت لاگ را دور می‌زند. |
+| R1-24 | Report1 | وظیفه یک تنظیم روی صفحه تنظیمات نامشخص است | FAU_STG.2، FMT_MTD | ۳ | `internal/platform/security/audit/chain.go`، `internal/platform/security/settings/keys.go`، `internal/platform/security/settings/service.go`، `cmd/server/main.go` | `TestR1_24_LastVerifiedEventIdIsNotAUserSetting`، `TestR1_24_RemoveRetiredCheckpointAuditsOnce`، `TestAuditChainState_SealRejectsTamper` | منتظر تست DB | کلید `LastVerifiedEventId` از پیش‌فرض و UI حذف شد. هنگام راه‌اندازی ردیف قدیمی با `SETTING_REMOVED` پاک می‌شود و بررسی از صفر شروع می‌شود. وضعیت زنجیره در `AuditChainStates` با HMAC است. |
 
 ## یافته‌های Discovery
 
 | شناسه | منبع | شرح کوتاه | الزام PP | فاز | فایل‌های کد | تست‌ها | وضعیت | یادداشت |
 |---|---|---|---|---|---|---|---|---|
-| D-11 | Discovery | `VerifyChain` بعد از checkpoint هش آخرین ردیف را به‌جای ردیف قبلی برمی‌دارد | FAU_STG.1 | ۱ | `internal/platform/security/audit/manager.go` | — | باز | هشدار دستکاری کاذب. checkpoint جلو نمی‌رود. شاهد داده در D-23. |
-| D-12 | Discovery | پاک‌سازی لاگ قدیمی زنجیره هش را از وسط می‌برد | FAU_STG.1 | ۱ | `internal/platform/security/logretention/worker.go` | — | باز | پس از پاک‌سازی، بررسی صحت نامعتبر می‌شود. زنجیره لنگر (anchor) می‌خواهد. |
+| D-11 | Discovery | `VerifyChain` بعد از checkpoint هش آخرین ردیف را به‌جای ردیف قبلی برمی‌دارد | FAU_STG.1 | ۱ | `internal/platform/security/audit/chain.go`، `internal/platform/security/audit/manager.go` | `TestD11_HealthyChainAdvancesState`، `TestD11_TamperedDescriptionStopsAtPreviousRow`، `TestD11_RepeatCheckDoesNotRepeatTamperEvent`، `TestD11_ConcurrentLogEventKeepsSingleChain`، `TestIntegration_D11_ConcurrentLogAndVerifyChain` | منتظر تست DB | بررسی از `LastVerifiedHash` و دسته‌ای است. هشدار دستکاری فقط برای `BrokenAtID` تازه ثبت می‌شود. |
+| D-12 | Discovery | پاک‌سازی لاگ قدیمی زنجیره هش را از وسط می‌برد | FAU_STG.1 | ۱ | `internal/platform/security/logretention/worker.go`، `internal/platform/security/audit/manager.go` | `TestD12_CleanupPrefixThenVerifyRemaining`، `TestD12_AppendAfterDeletingVerifiedTipUsesAnchor`، `TestD12_ZeroCheckpointUsesAnchorHash` | منتظر تست DB | فقط ردیف‌های `ID <= LastVerifiedID` حذف می‌شوند و هش آخرین ردیف حذفی در `AnchorHash` می‌ماند. |
 | D-13 | Discovery | خطای ثبت ممیزی در سرویس‌ها با `_ =` نادیده گرفته می‌شود | FAU_STG.4 | ۱ | سرویس‌هایی که `LogEvent` را دور می‌ریزند | — | باز | شکست ممیزی بی‌صدا می‌ماند. |
 | D-14 | Discovery | CSRF بدون کاربر، `UserID=0` ذخیره می‌کند | FAU_GEN.2 | ۱ | `internal/platform/middleware/csrf.go` | — | باز | بخشی از علت R1-01. |
 | D-15 | Discovery | قفل IP روی کل `/api` اعمال می‌شود | FIA_AFL | ۴ | `internal/platform/middleware/ratelimit.go` | — | باز | قفل یک IP کار پذیرش را می‌بندد. |
@@ -66,7 +66,7 @@
 | D-20 | Discovery | `index.css` برای رابط `@font-face` ندارد و به فونت نصب‌شده روی سیستم وابسته است | AVA_VAN.1 | ۵ | `frontend/src/index.css`، `frontend/public/fonts` | — | باز | فایل‌های Vazirmatn محلی هستند. نمایش در کلاینت بدون آن فونت خراب می‌شود. |
 | D-21 | Discovery | `FormLayout` استفاده نمی‌شود؛ فرم‌ها بدون react-hook-form، استایل inline و جدول خام مانده‌اند | — | ۱ | `frontend/src` | — | باز | نقشه راه آن را داخل فازهای ۱ و ۳ می‌گذارد. |
 | D-22 | Discovery | فیش ۷۰ میلی‌متری پذیرش بیرون از موتور گزارش است | — | ۵ | `frontend` چاپ فیش پذیرش | — | باز | انتقال به `ReceiptTemplate`. |
-| D-23 | Discovery | ۳۸۶۱ رویداد از ۴۰۹۶ رویداد لاگ امنیتی `DATA_TAMPERING` است | FAU_STG.2 | ۱ | جدول `SecurityEvents` | — | باز | Q9 و Q10. حدود ۳۸۷۷ رویداد بدون کاربر. `LastVerifiedEventId=6`. اثر باگ D-11. محیط ارزیابی باید پایگاه تمیز داشته باشد. |
+| D-23 | Discovery | ۳۸۶۱ رویداد از ۴۰۹۶ رویداد لاگ امنیتی `DATA_TAMPERING` است | FAU_STG.2 | ۱ | `internal/platform/security/audit/chain.go`، `internal/platform/security/logretention/worker.go`، `scripts/db-checks/audit_chain_status.sql` | `TestD11_RepeatCheckDoesNotRepeatTamperEvent`، `TestCreatedAt_MicrosecondRoundTripKeepsHash` | منتظر تست DB | ۳۸۶۱ هشدار موجود در DB توسعه کاذب بوده‌اند؛ محیط ارزیابی با DB تمیز نصب می‌شود. |
 | D-24 | Discovery | `IsSaturdayBlocked=True` و `IsFridayBlocked=False` با حرف بزرگ اعمال نمی‌شود | FMT_MTD | ۳ | `internal/platform/security/loginguard` | — | باز | Q16. کد فقط رشته دقیق `true` را می‌پذیرد. تعطیلی شنبه‌ای که مشاور گذاشته اعمال نمی‌شود. مصداق R1-09. |
 | D-25 | Discovery | `Password_MinLength=3` در پایگاه توسعه ذخیره شده است | FIA_PMG | ۳ | `internal/platform/security/settings` | — | باز | Q16. کمتر از حداقل ۸ در FIA_PMG. سامانه مقدار غیرمجاز را پذیرفته. مصداق R1-10. |
 | D-26 | Discovery | `MaximumTimeOfUserIpBeingLocked=1` دقیقه و `MaximumNumberOfFailedLogin=2` بدون بازه تعریف‌شده ذخیره شده‌اند | FMT_MTD | ۳ | `internal/platform/security/settings` | — | باز | Q16. مقدارها در کد پذیرفته می‌شوند ولی بازه مجاز تعریف نشده است. |
@@ -83,7 +83,7 @@
 | PP-01 | PP | آغاز و توقف توابع ممیزی، و ثبت خواندن لاگ و تلاش ناموفق برای خواندن آن، ثبت نمی‌شود | FAU_GEN.1 | ۱ | راه‌اندازی سرور و API لاگ | — | باز | راه‌اندازی و خاموشی سرور رویداد ممیزی ندارند. |
 | PP-02 | PP | انتخاب رویدادهای قابل ممیزی بر اساس نوع رویداد و کاربر وجود ندارد | FAU_SEL.1 | ۱ | تنظیم ممیزی | — | باز | |
 | PP-03 | PP | هنگام عبور حجم لاگ از آستانه به مدیر هشدار داده نمی‌شود | FAU_STG.3 | ۳ | `logretention`، رابط مدیر | — | باز | اعلان در UI نیست. برچسب و واحد آستانه در D-19 است. |
-| PP-04 | PP | نتیجه بررسی صحت لاگ به مدیر نشان داده نمی‌شود | FAU_STG.1، FAU_STG.2 | ۱ | زنجیره هش `audit` | — | باز | زنجیره هست. تشخیص حذف یا تغییر غیرمجاز به‌خاطر D-11 و D-12 قابل اتکا نیست. |
+| PP-04 | PP | نتیجه بررسی صحت لاگ به مدیر نشان داده نمی‌شود | FAU_STG.1، FAU_STG.2 | ۱ | زنجیره هش `audit` | — | باز | بررسی و لنگر در D-11 و D-12 پیاده شده و منتظر تست DB است. نمایش نتیجه به مدیر هنوز نیست. |
 | PP-05 | PP | شکست بررسی صحت رکوردها گزارش و هشدار نمی‌شود | FDP_SDI.2، FDP_SDI.3 | ۵ | HMAC و `SecurityCode` | — | باز | امروز بیشتر محاسبه و ذخیره است تا هشدار. |
 | PP-06 | PP | خروجی Excel و PDF سمت کلاینت است: مجوز جدا، لاگ ممیزی، و مشخصه کاربر و زمان روی فایل ندارد | FDP_ETC | ۵ | `frontend/src/platform/reports` | — | باز | |
 | PP-07 | PP | فیلدهای حساس بیمار رمزنگاری ستونی و شاخص جستجو ندارند | — | ۵ | مدل بیمار | — | باز | plaintext در D-29 تأیید شده. تصمیم نهایی با مشاور است. |

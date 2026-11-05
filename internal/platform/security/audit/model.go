@@ -1,10 +1,6 @@
 package audit
 
-import (
-	"time"
-
-	"gorm.io/gorm"
-)
+import "time"
 
 // SecurityEvent مدل جدول رویدادهای امنیتی با Hash-Chain.
 type SecurityEvent struct {
@@ -18,24 +14,12 @@ type SecurityEvent struct {
 	RowHash     string    `gorm:"column:RowHash;size:128;not null" json:"-"`
 }
 
-// TableName نام جدول در دیتابیس.
+// TableName نام جدول SecurityEvents را برمی‌گرداند.
 func (SecurityEvent) TableName() string {
 	return "SecurityEvents"
 }
 
-// Repository عملیات CRUD خام رویدادهای امنیتی.
-type Repository interface {
-	GetLastRowHash() (string, error)
-	Create(event *SecurityEvent) error
-	FindFromID(fromID int64) ([]SecurityEvent, error)
-	GetLastEventID() (int64, error)
-	Count() (int64, error)
-	DeleteOldest(count int) (int64, error)
-	GetTableSizeMB() (float64, error)
-	FindEvents(filter EventFilter) ([]SecurityEvent, error)
-}
-
-// EventFilter فیلترهای جستجوی رویدادهای امنیتی.
+// EventFilter فیلترهای جستجوی رویدادهای امنیتی است.
 type EventFilter struct {
 	UserID   *int
 	IP       string
@@ -44,112 +28,16 @@ type EventFilter struct {
 	ToDate   *time.Time
 }
 
-type gormRepository struct {
-	db *gorm.DB
-}
-
-// NewRepository نمونه Repository می‌سازد.
-func NewRepository(db *gorm.DB) Repository {
-	return &gormRepository{db: db}
-}
-
-func (r *gormRepository) GetLastRowHash() (string, error) {
-	var event SecurityEvent
-	// Last به‌جای First+Order — جلوگیری از ORDER BY تکراری ID در SQL Server
-	err := r.db.Last(&event).Error
-	if err == gorm.ErrRecordNotFound {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return event.RowHash, nil
-}
-
-func (r *gormRepository) Create(event *SecurityEvent) error {
-	return r.db.Create(event).Error
-}
-
-func (r *gormRepository) FindFromID(fromID int64) ([]SecurityEvent, error) {
-	var events []SecurityEvent
-	err := r.db.Where("ID >= ?", fromID).Order("ID ASC").Find(&events).Error
-	return events, err
-}
-
-func (r *gormRepository) GetLastEventID() (int64, error) {
-	var event SecurityEvent
-	err := r.db.Last(&event).Error
-	if err == gorm.ErrRecordNotFound {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return event.ID, nil
-}
-
-func (r *gormRepository) Count() (int64, error) {
-	var count int64
-	err := r.db.Model(&SecurityEvent{}).Count(&count).Error
-	return count, err
-}
-
-func (r *gormRepository) DeleteOldest(count int) (int64, error) {
-	var ids []int64
-	err := r.db.Model(&SecurityEvent{}).Order("ID ASC").Limit(count).Pluck("ID", &ids).Error
-	if err != nil || len(ids) == 0 {
-		return 0, err
-	}
-	result := r.db.Where("ID IN ?", ids).Delete(&SecurityEvent{})
-	return result.RowsAffected, result.Error
-}
-
-func (r *gormRepository) GetTableSizeMB() (float64, error) {
-	var result struct {
-		ReservedKB float64 `gorm:"column:reserved_kb"`
-	}
-	err := r.db.Raw(`
-		SELECT SUM(reserved_page_count) * 8.0 / 1024 AS reserved_kb
-		FROM sys.dm_db_partition_stats
-		WHERE object_id = OBJECT_ID('SecurityEvents')
-	`).Scan(&result).Error
-	if err != nil {
-		return 0, err
-	}
-	return result.ReservedKB / 1024.0, nil
-}
-
-// FindEvents رویدادهای امنیتی را با فیلترهای اختیاری برمی‌گرداند.
-func (r *gormRepository) FindEvents(filter EventFilter) ([]SecurityEvent, error) {
-	var events []SecurityEvent
-	q := r.db.Model(&SecurityEvent{})
-
-	if filter.UserID != nil {
-		q = q.Where("SecurityEvents.UserID = ?", *filter.UserID)
-	}
-	if filter.IP != "" {
-		q = q.Where("SecurityEvents.Ip = ?", filter.IP)
-	}
-	if filter.Username != "" {
-		q = q.Joins("INNER JOIN Users ON Users.ID = SecurityEvents.UserID").
-			Where("Users.Username = ?", filter.Username)
-	}
-	if filter.FromDate != nil && !filter.FromDate.IsZero() {
-		q = q.Where("SecurityEvents.CreatedAt >= ?", *filter.FromDate)
-	}
-	if filter.ToDate != nil && !filter.ToDate.IsZero() {
-		to := endOfDay(*filter.ToDate)
-		q = q.Where("SecurityEvents.CreatedAt <= ?", to)
-	}
-
-	err := q.Order("SecurityEvents.ID DESC").Find(&events).Error
-	return events, err
-}
-
-// endOfDay پایان روز را برای فیلتر toDate برمی‌گرداند.
-func endOfDay(t time.Time) time.Time {
-	if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
-		return t.Add(24*time.Hour - time.Nanosecond)
-	}
-	return t
+// Repository دسترسی به رویدادها و ردیف وضعیت زنجیره است.
+// apply در DeleteVerifiedPrefix وضعیت جدید را از روی ردیف‌های در حال حذف می‌سازد.
+// اگر nil برگرداند حذفی انجام نمی‌شود. apply نباید LogEvent صدا بزند.
+type Repository interface {
+	AppendChained(build func(prevHash string) (*SecurityEvent, error)) error
+	FindAfterID(afterID int64, limit int) ([]SecurityEvent, error)
+	Count() (int64, error)
+	GetTableSizeMB() (float64, error)
+	FindEvents(filter EventFilter) ([]SecurityEvent, error)
+	LoadChainState() (AuditChainState, error)
+	SaveChainState(state *AuditChainState) error
+	DeleteVerifiedPrefix(maxID int64, limit int, apply func([]SecurityEvent) (*AuditChainState, error)) ([]SecurityEvent, error)
 }

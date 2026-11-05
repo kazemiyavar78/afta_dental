@@ -27,6 +27,7 @@ type Repository interface {
 	FindAll(IsFn bool) ([]SecuritySetting, error)
 	Upsert(setting *SecuritySetting) error
 	FindByID(id int) (*SecuritySetting, error)
+	DeleteByName(name string) error
 }
 
 type gormRepository struct {
@@ -92,4 +93,10 @@ func (r *gormRepository) Upsert(setting *SecuritySetting) error {
 	}
 	setting.ID = existing.ID
 	return r.db.Save(setting).Error
+}
+
+// DeleteByName ردیف تنظیم با این نام را حذف می‌کند.
+// name کلید تنظیم است. اگر ردیفی نباشد خطا نمی‌دهد.
+func (r *gormRepository) DeleteByName(name string) error {
+	return r.db.Where("SettingName = ?", name).Delete(&SecuritySetting{}).Error
 }
