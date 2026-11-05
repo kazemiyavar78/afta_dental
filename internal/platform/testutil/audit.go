@@ -8,7 +8,7 @@ import (
 )
 
 // RecordedAuditEvent یک فراخوانی ثبت ممیزی است که تست بعداً آن را می‌خواند.
-// Event وقتی پر است که ثبت از Record آمده باشد. فیلدهای تخت برای LogEvent قدیمی مانده‌اند.
+// Event رویداد ثبت‌شده است. فیلدهای تخت از همان رویداد پر می‌شوند تا تست‌های قدیمی فاعل را بخوانند.
 type RecordedAuditEvent struct {
 	UserID      *int
 	IP          string
@@ -22,26 +22,6 @@ type RecordedAuditEvent struct {
 type FakeAuditRecorder struct {
 	Events []RecordedAuditEvent
 	Err    error
-}
-
-// LogEvent رویداد نسخه ۱ را به Events اضافه می‌کند.
-// userID، ip، eventType و description همان آرگومان‌های audit.EventLogger هستند.
-// شناسه کاربر کپی می‌شود تا تغییر بعدی اشاره‌گرِ صداکننده، سابقه را عوض نکند.
-// خروجی همیشه nil است چون این پیاده‌سازی خطای پایگاه ندارد.
-func (f *FakeAuditRecorder) LogEvent(userID *int, ip, eventType, description string) error {
-	storedID := copyID(userID)
-	f.Events = append(f.Events, RecordedAuditEvent{
-		UserID:      storedID,
-		IP:          ip,
-		EventType:   eventType,
-		Description: description,
-		Event: audit.Event{
-			Type:        eventType,
-			Description: description,
-			Actor:       audit.Actor{UserID: storedID, IP: ip},
-		},
-	})
-	return nil
 }
 
 // Record رویداد نسخه ۲ را نگه می‌دارد.
@@ -83,8 +63,5 @@ func copyID(userID *int) *int {
 	return &id
 }
 
-// FakeAuditRecorder باید قرارداد ثبت قدیمی و جدید را داشته باشد.
-var (
-	_ audit.EventLogger = (*FakeAuditRecorder)(nil)
-	_ audit.Recorder    = (*FakeAuditRecorder)(nil)
-)
+// FakeAuditRecorder باید قرارداد ثبت نسخه ۲ را داشته باشد.
+var _ audit.Recorder = (*FakeAuditRecorder)(nil)

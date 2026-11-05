@@ -3,6 +3,7 @@
 package audit_test
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -39,7 +40,10 @@ func TestIntegration_D11_ConcurrentLogAndVerifyChain(t *testing.T) {
 			go func(g int) {
 				defer wg.Done()
 				for i := 0; i < perGoroutine; i++ {
-					if err := m.LogEvent(nil, "127.0.0.1", audit.EventLoginSuccess, fmt.Sprintf("g%d-%d", g, i)); err != nil {
+					if err := m.Record(context.Background(), audit.Event{
+						Type: audit.EventLoginSuccess, Result: audit.ResultSuccess,
+						Actor: audit.Actor{IP: "127.0.0.1"}, Description: fmt.Sprintf("g%d-%d", g, i),
+					}); err != nil {
 						errCh <- err
 						return
 					}

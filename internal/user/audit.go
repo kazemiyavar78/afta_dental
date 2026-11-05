@@ -10,12 +10,6 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 )
 
-// fieldChange مقدار قبل و بعد یک فیلد تغییریافته است.
-type fieldChange struct {
-	Before any `json:"before"`
-	After  any `json:"after"`
-}
-
 // record رویداد را می‌نویسد و شکست ثبت را به خطای عمومی عملیات تبدیل می‌کند.
 // ctx لغو درخواست است. e رویداد آماده است. خروجی nil یعنی ردیف نوشته شد.
 // FAU_STG.4: صدازننده نباید این خطا را نادیده بگیرد.
@@ -110,13 +104,14 @@ func (s *Service) recordRoleUpdated(ctx context.Context, actor audit.Actor, befo
 func roleUpdateDetails(before, after Role, beforePerms, afterPerms []Permission) (map[string]any, string, bool) {
 	details := map[string]any{}
 	var parts []string
-	if before.Name != after.Name {
-		details["name"] = fieldChange{Before: before.Name, After: after.Name}
-		parts = append(parts, "نام: «"+before.Name+"» به «"+after.Name+"»")
-	}
-	if before.Description != after.Description {
-		details["description"] = fieldChange{Before: before.Description, After: after.Description}
-		parts = append(parts, "توضیحات: «"+before.Description+"» به «"+after.Description+"»")
+	for key, change := range audit.Diff(roleSnap(before), roleSnap(after), []string{"name", "description"}) {
+		details[key] = change
+		if key == "name" {
+			parts = append(parts, "نام: «"+before.Name+"» به «"+after.Name+"»")
+		}
+		if key == "description" {
+			parts = append(parts, "توضیحات: «"+before.Description+"» به «"+after.Description+"»")
+		}
 	}
 	added, removed := diffNames(permissionNames(beforePerms), permissionNames(afterPerms))
 	if len(added) > 0 || len(removed) > 0 {
@@ -226,41 +221,64 @@ func (s *Service) recordPasswordChanged(ctx context.Context, actor audit.Actor, 
 	})
 }
 
+// userAuditSnap فیلدهای قابل نمایش کاربر برای Diff است.
+// تلفن قبل از مقایسه ماسک می‌شود. رمز و کد امنیتی در این ساختار نیستند.
+type userAuditSnap struct {
+	Name        string `json:"name"`
+	Family      string `json:"family"`
+	Phone       string `json:"phone"`
+	Address     string `json:"address"`
+	MedicalCode string `json:"medical_code"`
+	Role        string `json:"role"`
+	UserType    string `json:"user_type"`
+	IsActive    bool   `json:"is_active"`
+	IsLocked    bool   `json:"is_locked"`
+}
+
+// roleSnap نام و توضیح نقش را برای Diff آماده می‌کند.
+// role نقش است. خروجی فقط همان دو فیلد قابل نمایش است.
+type roleSnapFields struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// roleSnap فیلدهای قابل مقایسه نقش را می‌سازد.
+// role نقش است. خروجی برای audit.Diff است.
+func roleSnap(role Role) roleSnapFields {
+	return roleSnapFields{Name: role.Name, Description: role.Description}
+}
+
 // userFieldChanges فیلدهای قابل نمایش را که عوض شده‌اند برمی‌گرداند.
 // before و after دو وضعیت کاربرند. oldRole و newRole نام نقش‌اند.
 // خروجی nil است اگر چیزی عوض نشده باشد. رمز و کد امنیتی مقایسه نمی‌شوند.
 func userFieldChanges(before, after User, oldRole, newRole string) map[string]any {
-	details := map[string]any{}
-	putChange(details, "name", before.Name, after.Name)
-	putChange(details, "family", before.Family, after.Family)
-	if before.PhoneNumber != after.PhoneNumber {
-		details["phone"] = fieldChange{Before: maskPhone(before.PhoneNumber), After: maskPhone(after.PhoneNumber)}
-	}
-	putChange(details, "address", before.Address, after.Address)
-	putChange(details, "medical_code", medicalText(before.MedicalCode), medicalText(after.MedicalCode))
-	if before.RoleID != after.RoleID || oldRole != newRole {
-		details["role"] = fieldChange{Before: oldRole, After: newRole}
-	}
-	putChange(details, "user_type", string(before.UserType), string(after.UserType))
-	if before.IsActive != after.IsActive {
-		details["is_active"] = fieldChange{Before: before.IsActive, After: after.IsActive}
-	}
-	if before.IsLocked != after.IsLocked {
-		details["is_locked"] = fieldChange{Before: before.IsLocked, After: after.IsLocked}
-	}
-	if len(details) == 0 {
+	diff := audit.Diff(userSnap(before, oldRole), userSnap(after, newRole), []string{
+		"name", "family", "phone", "address", "medical_code", "role", "user_type", "is_active", "is_locked",
+	})
+	if len(diff) == 0 {
 		return nil
+	}
+	details := make(map[string]any, len(diff))
+	for key, change := range diff {
+		details[key] = change
 	}
 	return details
 }
 
-// putChange اگر دو رشته فرق داشته باشند یک before/after در جزئیات می‌گذارد.
-// details نقشه خروجی است. key نام فیلد و before/after مقدارها هستند.
-func putChange(details map[string]any, key, before, after string) {
-	if before == after {
-		return
+// userSnap وضعیت قابل ممیزی کاربر را می‌سازد.
+// user کاربر و roleName نام نقش است. تلفن جز چهار رقم آخر ستاره می‌شود.
+func userSnap(user User, roleName string) userAuditSnap {
+	return userAuditSnap{
+		Name:        user.Name,
+		Family:      user.Family,
+		Phone:       audit.MaskTail(user.PhoneNumber, 4),
+		Address:     user.Address,
+		MedicalCode: medicalText(user.MedicalCode),
+		Role:        roleName,
+		UserType:    string(user.UserType),
+		IsActive:    user.IsActive,
+		IsLocked:    user.IsLocked,
 	}
-	details[key] = fieldChange{Before: before, After: after}
 }
 
 // userUpdateDescription برچسب فارسی فیلدهای داخل جزئیات را به یک جمله تبدیل می‌کند.
@@ -284,16 +302,6 @@ func userUpdateDescription(details map[string]any) string {
 		}
 	}
 	return "فیلدهای تغییریافته: " + strings.Join(names, "، ")
-}
-
-// maskPhone همه نویسه‌ها جز چهار رقم آخر را ستاره می‌کند.
-// phone شماره خام است. اگر کوتاه‌تر از چهار نویسه باشد همان متن برمی‌گردد.
-func maskPhone(phone string) string {
-	runes := []rune(phone)
-	if len(runes) <= 4 {
-		return phone
-	}
-	return strings.Repeat("*", len(runes)-4) + string(runes[len(runes)-4:])
 }
 
 // medicalText مقدار کد نظام را از اشاره‌گر می‌خواند.

@@ -24,7 +24,7 @@ func newTestManager(t *testing.T) (*Manager, *memoryRepo) {
 func appendN(t *testing.T, m *Manager, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if err := m.LogEvent(nil, "127.0.0.1", EventLoginSuccess, fmt.Sprintf("رویداد %d", i)); err != nil {
+		if err := m.logEvent(nil, "127.0.0.1", EventLoginSuccess, fmt.Sprintf("رویداد %d", i)); err != nil {
 			t.Fatalf("ثبت رویداد %d: %v", i, err)
 		}
 	}
@@ -117,7 +117,7 @@ func TestD11_RepeatCheckDoesNotRepeatTamperEvent(t *testing.T) {
 			t.Fatalf("دور %d: id=%d broken=%d", round, lastID, broken)
 		}
 		if AdvanceChainState(&state, lastID, hash, broken, now) {
-			if err := m.LogEvent(nil, "system", EventDataTampering, "شکست زنجیره ممیزی در رویداد 40"); err != nil {
+			if err := m.logEvent(nil, "system", EventDataTampering, "شکست زنجیره ممیزی در رویداد 40"); err != nil {
 				t.Fatalf("ثبت هشدار: %v", err)
 			}
 		}
@@ -182,7 +182,7 @@ func TestD12_AppendAfterDeletingVerifiedTipUsesAnchor(t *testing.T) {
 	if err != nil || deleted != 5 {
 		t.Fatalf("حذف نوک زنجیره: n=%d err=%v", deleted, err)
 	}
-	if err := m.LogEvent(nil, "127.0.0.1", EventLoginSuccess, "بعد از پاکسازی"); err != nil {
+	if err := m.logEvent(nil, "127.0.0.1", EventLoginSuccess, "بعد از پاکسازی"); err != nil {
 		t.Fatalf("ثبت بعد از پاکسازی: %v", err)
 	}
 	if len(repo.events) != 1 || repo.events[0].PrevHash != state.AnchorHash {
@@ -218,7 +218,7 @@ func TestD11_ConcurrentLogEventKeepsSingleChain(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			errCh <- m.LogEvent(nil, "127.0.0.1", EventLoginSuccess, fmt.Sprintf("همزمان %d", i))
+			errCh <- m.logEvent(nil, "127.0.0.1", EventLoginSuccess, fmt.Sprintf("همزمان %d", i))
 		}(i)
 	}
 	wg.Wait()
@@ -259,7 +259,7 @@ func TestCreatedAt_MicrosecondRoundTripKeepsHash(t *testing.T) {
 	if before != after {
 		t.Fatalf("هش قبل و بعد از رفت‌وبرگشت زمان یکی نیست")
 	}
-	if err := m.LogEvent(nil, "127.0.0.1", EventLoginSuccess, "ping"); err != nil {
+	if err := m.logEvent(nil, "127.0.0.1", EventLoginSuccess, "ping"); err != nil {
 		t.Fatalf("ثبت: %v", err)
 	}
 	got := repo.events[0]

@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"testing"
 
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
@@ -11,12 +12,18 @@ func TestFakeAuditRecorder_RecordsActorAndDescription(t *testing.T) {
 	rec := &FakeAuditRecorder{}
 	actorID := 4
 
-	if err := rec.LogEvent(&actorID, "10.0.0.8", audit.EventLogout, "خروج کاربر"); err != nil {
-		t.Fatalf("LogEvent نباید خطا بدهد: %v", err)
+	if err := rec.Record(context.Background(), audit.Event{
+		Type: audit.EventLogout, Result: audit.ResultSuccess, Description: "خروج کاربر",
+		Actor: audit.Actor{UserID: &actorID, IP: "10.0.0.8"},
+	}); err != nil {
+		t.Fatalf("Record نباید خطا بدهد: %v", err)
 	}
 	actorID = 99
-	if err := rec.LogEvent(nil, "10.0.0.9", audit.EventLoginFailed, "فاعل ناشناس"); err != nil {
-		t.Fatalf("LogEvent با کاربر تهی نباید خطا بدهد: %v", err)
+	if err := rec.Record(context.Background(), audit.Event{
+		Type: audit.EventLoginFailed, Result: audit.ResultFailure, Description: "فاعل ناشناس",
+		Actor: audit.Actor{IP: "10.0.0.9"},
+	}); err != nil {
+		t.Fatalf("Record با کاربر تهی نباید خطا بدهد: %v", err)
 	}
 
 	if len(rec.Events) != 2 {

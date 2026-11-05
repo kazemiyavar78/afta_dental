@@ -9,6 +9,8 @@ import (
 // Repository دسترسی داده‌ای کیف پول، صندوق، تراکنش و حساب بانکی.
 type Repository interface {
 	WithTx(fn func(txRepo Repository) error) error
+	// DB اتصال جاری است. داخل WithTx همان تراکنش باز است تا ممیزی در همان تراکنش ثبت شود.
+	DB() *gorm.DB
 
 	GetOrCreateCashFund(tx *gorm.DB) (*CashFund, error)
 	AdjustCashFundBalance(tx *gorm.DB, delta int64) error
@@ -62,6 +64,10 @@ func (r *gormRepo) WithTx(fn func(txRepo Repository) error) error {
 		return fn(&gormRepo{db: tx})
 	})
 }
+
+// DB اتصال یا تراکنش جاری این مخزن را برمی‌گرداند.
+// خروجی برای RecordTx است تا رویداد ممیزی با همان تراکنش commit شود.
+func (r *gormRepo) DB() *gorm.DB { return r.db }
 
 func (r *gormRepo) txOrDB(tx *gorm.DB) *gorm.DB {
 	if tx != nil {

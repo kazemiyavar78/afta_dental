@@ -1,7 +1,7 @@
 package organizationpackage
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
@@ -12,7 +12,7 @@ import (
 // Service لایه منطق کسب‌وکار بسته‌های تعرفه.
 type Service struct {
 	repo       Repository
-	audit      *audit.Manager
+	audit      audit.Recorder
 	encryptSvc *encryption.OrganizationPackageEncryptionService
 }
 
@@ -74,10 +74,12 @@ func applyRequest(o *OrganizationPackage, req CreateRequest) {
 }
 
 // verifyIntegrity هش یکپارچگی بسته را بررسی می‌کند؛ در صورت نقض، رویداد دستکاری ثبت و خطا برمی‌گرداند.
-func (s *Service) verifyIntegrity(o *OrganizationPackage, actorID int, ip string) error {
+// ctx زمینه است. o بسته و actor فاعل است. شکست ممیزی قبل از ErrIntegrity برمی‌گردد.
+func (s *Service) verifyIntegrity(ctx context.Context, o *OrganizationPackage, actor audit.Actor) error {
 	if !s.encryptSvc.CheckSecurityCode(toSensitiveData(o), o.IntegrityHash) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی بسته تعرفه %d (%s)", o.ID, o.PackageName))
+		if err := s.recordIntegrity(ctx, actor, o); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 	return nil
@@ -96,7 +98,8 @@ func (s *Service) Exists(id int) (bool, error) {
 }
 
 // Create بسته تعرفه جدید می‌سازد و هش امنیتی آن را تولید می‌کند.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. req داده فرم و actor سازنده است. خروجی پاسخ یا خطا است.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	if err := validatePercentages(req.SubsidyPercentage, req.SupplementaryPercentage); err != nil {
 		return nil, err
 	}
@@ -113,7 +116,9 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	if err := s.repo.Create(o); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد بسته تعرفه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد بسته تعرفه %s", o.PackageName))
+	if err := s.recordCreated(ctx, actor, o); err != nil {
+		return nil, err
+	}
 	return toResponse(o), nil
 }
 
@@ -143,7 +148,8 @@ func (s *Service) List() ([]Response, error) {
 }
 
 // Update پس از تایید هش یکپارچگی، بسته تعرفه را بروزرسانی و هش جدید تولید می‌کند.
-func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+func (s *Service) Update(ctx context.Context, id int, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	if err := validatePercentages(req.SubsidyPercentage, req.SupplementaryPercentage); err != nil {
 		return nil, err
 	}
@@ -156,10 +162,11 @@ func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Re
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن بسته تعرفه.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(o, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, o, actor); err != nil {
 		return nil, err
 	}
 
+	before := *o
 	applyRequest(o, CreateRequest(req))
 
 	integrityHash, err := s.encryptSvc.CreateSecurityCode(toSensitiveData(o))
@@ -171,12 +178,15 @@ func (s *Service) Update(id int, req UpdateRequest, actorID int, ip string) (*Re
 	if err := s.repo.Update(o); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی بسته تعرفه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی بسته تعرفه %s", o.PackageName))
+	if err := s.recordUpdated(ctx, actor, &before, o); err != nil {
+		return nil, err
+	}
 	return toResponse(o), nil
 }
 
 // Delete پس از تایید هش یکپارچگی، بسته تعرفه را به‌صورت soft-delete حذف می‌کند.
-func (s *Service) Delete(id int, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطا است.
+func (s *Service) Delete(ctx context.Context, id int, actor audit.Actor) error {
 	o, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -185,13 +195,12 @@ func (s *Service) Delete(id int, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در خواندن بسته تعرفه.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(o, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, o, actor); err != nil {
 		return err
 	}
 
 	if err := s.repo.Delete(o); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف بسته تعرفه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف بسته تعرفه %s", o.PackageName))
-	return nil
+	return s.recordDeleted(ctx, actor, o)
 }

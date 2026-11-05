@@ -1,7 +1,7 @@
 package patient
 
 import (
-	"fmt"
+	"context"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,7 +18,7 @@ const birthDateLayout = "2006-01-02"
 // Service لایه منطق کسب‌وکار بیمار.
 type Service struct {
 	repo       Repository
-	audit      *audit.Manager
+	audit      audit.Recorder
 	encryptSvc *encryption.PatientEncryptionService
 }
 
@@ -110,17 +110,22 @@ func toResponse(p *Patient) *Response {
 }
 
 // verifyIntegrity هش یکپارچگی بیمار را با داده‌های فعلی بررسی می‌کند؛ در صورت نقض، رویداد دستکاری ثبت و خطا برمی‌گرداند.
-func (s *Service) verifyIntegrity(p *Patient, actorID int, ip string) error {
+// ctx زمینه درخواست است. p بیمار و actor فاعل خواندن یا تغییر است.
+// اگر ثبت ممیزی شکست بخورد همان خطا برمی‌گردد و ErrIntegrity فقط بعد از ثبت موفق است.
+func (s *Service) verifyIntegrity(ctx context.Context, p *Patient, actor audit.Actor) error {
 	if !s.encryptSvc.CheckSecurityCode(toSensitiveData(p), p.IntegrityHash) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی بیمار %d (%s %s)", p.ID, p.FirstName, p.LastName))
+		if err := s.recordIntegrity(ctx, actor, p); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 	return nil
 }
 
 // Create بیمار جدید می‌سازد و هش امنیتی آن را تولید می‌کند.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx لغو درخواست است. req داده فرم و actor سازنده است.
+// خروجی پاسخ بیمار یا خطا است. ایجاد با ENTITY_CREATED ثبت می‌شود.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	if err := ValidateNationalCode(req.NationalCode, req.IsForeignNational); err != nil {
 		return nil, err
 	}
@@ -156,13 +161,14 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	if err := s.repo.Create(p); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد بیمار.", err.Error(), 500)
 	}
+	if err := s.recordCreated(ctx, actor, p); err != nil {
+		return nil, err
+	}
 
 	created, err := s.repo.FindByID(p.ID)
 	if err != nil {
 		return toResponse(p), nil
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ایجاد بیمار %s %s", p.FirstName, p.LastName))
 	return toResponse(created), nil
 }
 
@@ -253,7 +259,9 @@ func (s *Service) Search(req SearchRequest) ([]Response, error) {
 }
 
 // Update پس از تایید هش یکپارچگی، بیمار را بروزرسانی و هش جدید تولید می‌کند.
-func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+// خروجی پاسخ یا خطا است. فقط فیلدهای عوض‌شده در ENTITY_UPDATED می‌آیند.
+func (s *Service) Update(ctx context.Context, id uint, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	p, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.ErrNotFound
@@ -262,10 +270,11 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن بیمار.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(p, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, p, actor); err != nil {
 		return nil, err
 	}
 
+	before := *p
 	birthDate, err := parseBirthDate(req.BirthDate)
 	if err != nil {
 		return nil, err
@@ -300,17 +309,19 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی بیمار.", err.Error(), 500)
 	}
 
+	if err := s.recordUpdated(ctx, actor, &before, p); err != nil {
+		return nil, err
+	}
 	updated, err := s.repo.FindByID(id)
 	if err != nil {
 		return toResponse(p), nil
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("بروزرسانی بیمار %s %s", p.FirstName, p.LastName))
 	return toResponse(updated), nil
 }
 
 // Delete پس از تایید هش یکپارچگی، بیمار را به‌صورت soft-delete حذف می‌کند.
-func (s *Service) Delete(id uint, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطای کسب‌وکار یا ممیزی است.
+func (s *Service) Delete(ctx context.Context, id uint, actor audit.Actor) error {
 	p, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -319,14 +330,12 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در خواندن بیمار.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(p, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, p, actor); err != nil {
 		return err
 	}
 
 	if err := s.repo.Delete(p); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف بیمار.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("حذف بیمار %s %s", p.FirstName, p.LastName))
-	return nil
+	return s.recordDeleted(ctx, actor, p)
 }

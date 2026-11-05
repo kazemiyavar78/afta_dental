@@ -30,12 +30,11 @@ func (h *Handler) CalculateTariffForOrganization(c *gin.Context) {
 
 // SaveTariffsForOrganization تعرفه‌های محاسبه‌شده را در یک تراکنش ذخیره یا بروزرسانی می‌کند.
 func (h *Handler) SaveTariffsForOrganization(c *gin.Context) {
-	uid, _ := c.Get(middleware.ContextKeyUserID)
 	var req CalculateTariffForOrganizationRequest
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.SaveTariffsForOrganization(req, uid.(int), c.ClientIP())
+	resp, err := h.service.SaveTariffsForOrganization(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -62,7 +61,6 @@ func (h *Handler) ListByOrganization(c *gin.Context) {
 
 // RecalculateTariff یک تعرفه خاص را با سه مبلغ مرکز بازمحاسبه و ذخیره می‌کند.
 func (h *Handler) RecalculateTariff(c *gin.Context) {
-	uid, _ := c.Get(middleware.ContextKeyUserID)
 	var uri struct {
 		ID uint `uri:"id" binding:"required"`
 	}
@@ -74,7 +72,7 @@ func (h *Handler) RecalculateTariff(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.RecalculateTariff(uri.ID, req, uid.(int), c.ClientIP())
+	resp, err := h.service.RecalculateTariff(c.Request.Context(), uri.ID, req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return

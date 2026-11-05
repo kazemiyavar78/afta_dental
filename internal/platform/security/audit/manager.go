@@ -23,11 +23,11 @@ func NewManager(db *gorm.DB, auditKey string) *Manager {
 	}
 }
 
-// LogEvent مسیر ثبت قدیمی است و تا مهاجرت فراخوانی‌ها در گام ۱-۳ و ۱-۴ می‌ماند.
+// logEvent مسیر ثبت نسخه ۱ است و فقط تست زنجیره قدیمی داخل همین پکیج آن را صدا می‌زند.
 // userID فاعل است و اگر nil باشد بخش کاربر هش خالی می‌ماند. ip، eventType و description فیلدهای ردیف‌اند.
 // خروجی خطا یعنی درج انجام نشده. ردیف با HashVersion=1 نوشته می‌شود تا فرمول هش قبلی ثابت بماند.
 // FAU_STG.1: دو درخواست همزمان نباید دو ردیف با یک هش قبلی بسازند.
-func (m *Manager) LogEvent(userID *int, ip, eventType, description string) error {
+func (m *Manager) logEvent(userID *int, ip, eventType, description string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.repo.AppendChained(func(prevHash string) (*SecurityEvent, error) {
@@ -49,7 +49,7 @@ func (m *Manager) LogEvent(userID *int, ip, eventType, description string) error
 }
 
 // TrimVerifiedPrefix فقط ردیف‌های تأییدشده با ID کمتر یا برابر LastVerifiedID را حذف می‌کند.
-// state نقطه تأیید است و limit سقف تعداد است. seal بعد از به‌روزرسانی لنگر، HMAC را می‌نویسد و نباید LogEvent صدا بزند.
+// state نقطه تأیید است و limit سقف تعداد است. seal بعد از به‌روزرسانی لنگر، HMAC را می‌نویسد و نباید رویداد تازه بسازد.
 // خروجی تعداد حذف، بازه CreatedAt همان ردیف‌ها و خطا است. اگر چیزی حذف نشود هر سه تهی‌اند.
 // FAU_STG.1 / D-12: هش آخرین ردیف حذفی لنگر ردیف بعدی می‌شود.
 func (m *Manager) TrimVerifiedPrefix(state *AuditChainState, limit int, seal func(*AuditChainState)) (deleted int, from, to *time.Time, err error) {

@@ -53,6 +53,15 @@ type Event struct {
 	Description string
 }
 
+// ID شناسه عددی فاعل را برمی‌گرداند.
+// اگر کاربر در context نباشد صفر است تا ستون‌هایی که شناسه می‌خواهند تهی نمانند.
+func (a Actor) ID() int {
+	if a.UserID == nil {
+		return 0
+	}
+	return *a.UserID
+}
+
 // SystemActor فاعل worker، راه‌اندازی و خاموشی است.
 // خروجی شناسه کاربر ندارد. نام و IP هر دو system هستند تا ردیف بدون join مبدأ را نشان دهد.
 func SystemActor() Actor {

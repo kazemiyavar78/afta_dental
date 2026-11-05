@@ -153,8 +153,8 @@ func TestUnavailable_NilStaysNil(t *testing.T) {
 // TestHashVersions_MixedChainStillVerifies ردیف نسخه ۱ و نسخه ۲ پشت سر هم یک زنجیره سالم می‌سازند.
 func TestHashVersions_MixedChainStillVerifies(t *testing.T) {
 	m, repo := newTestManager(t)
-	if err := m.LogEvent(nil, "127.0.0.1", EventLoginSuccess, "ردیف قدیمی"); err != nil {
-		t.Fatalf("LogEvent: %v", err)
+	if err := m.logEvent(nil, "127.0.0.1", EventLoginSuccess, "ردیف قدیمی"); err != nil {
+		t.Fatalf("logEvent: %v", err)
 	}
 	userID := 2
 	if err := m.Record(context.Background(), Event{

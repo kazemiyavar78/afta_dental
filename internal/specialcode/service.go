@@ -1,7 +1,7 @@
 package specialcode
 
 import (
-	"fmt"
+	"context"
 	"strings"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
@@ -13,7 +13,7 @@ import (
 // Service لایه منطق کسب‌وکار کد خاص.
 type Service struct {
 	repo   Repository
-	audit  *audit.Manager
+	audit  audit.Recorder
 	signer *integrity.Signer
 }
 
@@ -35,17 +35,20 @@ func toResponse(item *SpecialCode) *Response {
 }
 
 // verifyIntegrity هش یکپارچگی را بررسی می‌کند؛ در صورت نقض خطا برمی‌گرداند.
-func (s *Service) verifyIntegrity(item *SpecialCode, actorID int, ip string) error {
+// ctx زمینه است. item کد خاص و actor فاعل است. شکست ممیزی قبل از ErrIntegrity برمی‌گردد.
+func (s *Service) verifyIntegrity(ctx context.Context, item *SpecialCode, actor audit.Actor) error {
 	if !VerifyIntegrity(s.signer, item) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی کد خاص %d (%s)", item.ID, item.Code))
+		if err := s.recordIntegrity(ctx, actor, item); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 	return nil
 }
 
 // Create کد خاص جدید می‌سازد و هش یکپارچگی آن را تولید می‌کند.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. req داده فرم و actor سازنده است. خروجی پاسخ یا خطا است.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	code := strings.TrimSpace(req.Code)
 	if code == "" || code == "0" {
 		return nil, apperror.New("VALIDATION_ERROR", "کد خاص نامعتبر است.", "invalid special code", 400)
@@ -71,7 +74,9 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش کد خاص.", err.Error(), 500)
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد کد خاص %s", item.Code))
+	if err := s.recordCreated(ctx, actor, item); err != nil {
+		return nil, err
+	}
 	return toResponse(item), nil
 }
 
@@ -88,7 +93,8 @@ func (s *Service) Get(id uint) (*Response, error) {
 }
 
 // GetByCode کد خاص را با کد برمی‌گرداند و یکپارچگی را بررسی می‌کند.
-func (s *Service) GetByCode(code string, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. code مقدار کد و actor فاعل خواندن است. خروجی پاسخ یا خطا است.
+func (s *Service) GetByCode(ctx context.Context, code string, actor audit.Actor) (*Response, error) {
 	code = strings.TrimSpace(code)
 	if code == "" || code == "0" {
 		return nil, apperror.ErrNotFound
@@ -100,14 +106,15 @@ func (s *Service) GetByCode(code string, actorID int, ip string) (*Response, err
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن کد خاص.", err.Error(), 500)
 	}
-	if err := s.verifyIntegrity(item, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, item, actor); err != nil {
 		return nil, err
 	}
 	return toResponse(item), nil
 }
 
 // GetActiveForCalc کد خاص فعال را برای محاسبه برمی‌گرداند؛ در صورت نقض هش یا غیرفعال بودن خطا می‌دهد.
-func (s *Service) GetActiveForCalc(id uint, actorID int, ip string) (*SpecialCode, error) {
+// ctx زمینه است. id شناسه و actor فاعل محاسبه است. خروجی کد فعال، nil اگر غیرفعال باشد، یا خطا.
+func (s *Service) GetActiveForCalc(ctx context.Context, id uint, actor audit.Actor) (*SpecialCode, error) {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.New("E-014", "کد خاص یافت نشد.", "special code not found", 404)
@@ -115,7 +122,7 @@ func (s *Service) GetActiveForCalc(id uint, actorID int, ip string) (*SpecialCod
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن کد خاص.", err.Error(), 500)
 	}
-	if err := s.verifyIntegrity(item, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, item, actor); err != nil {
 		return nil, err
 	}
 	if !item.IsActive || item.Percentage == 0 {
@@ -138,7 +145,8 @@ func (s *Service) List() ([]Response, error) {
 }
 
 // Update کد خاص را بروزرسانی می‌کند.
-func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+func (s *Service) Update(ctx context.Context, id uint, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.ErrNotFound
@@ -146,10 +154,11 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن کد خاص.", err.Error(), 500)
 	}
-	if err := s.verifyIntegrity(item, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, item, actor); err != nil {
 		return nil, err
 	}
 
+	before := *item
 	code := strings.TrimSpace(req.Code)
 	if code == "" || code == "0" {
 		return nil, apperror.New("VALIDATION_ERROR", "کد خاص نامعتبر است.", "invalid special code", 400)
@@ -168,12 +177,15 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if err := s.repo.Update(item); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی کد خاص.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی کد خاص %s", item.Code))
+	if err := s.recordUpdated(ctx, actor, &before, item); err != nil {
+		return nil, err
+	}
 	return toResponse(item), nil
 }
 
 // Delete کد خاص را حذف می‌کند.
-func (s *Service) Delete(id uint, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطا است.
+func (s *Service) Delete(ctx context.Context, id uint, actor audit.Actor) error {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -184,6 +196,5 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 	if err := s.repo.Delete(item); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف کد خاص.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف کد خاص %s", item.Code))
-	return nil
+	return s.recordDeleted(ctx, actor, item)
 }

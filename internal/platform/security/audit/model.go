@@ -47,7 +47,7 @@ type EventFilter struct {
 
 // Repository دسترسی به رویدادها و ردیف وضعیت زنجیره است.
 // apply در DeleteVerifiedPrefix وضعیت جدید را از روی ردیف‌های در حال حذف می‌سازد.
-// اگر nil برگرداند حذفی انجام نمی‌شود. apply نباید LogEvent صدا بزند.
+// اگر nil برگرداند حذفی انجام نمی‌شود. apply نباید رویداد تازه بسازد.
 type Repository interface {
 	AppendChained(build func(prevHash string) (*SecurityEvent, error)) error
 	AppendChainedCtx(ctx context.Context, build func(prevHash string) (*SecurityEvent, error)) error

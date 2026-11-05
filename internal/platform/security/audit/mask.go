@@ -5,6 +5,20 @@ import (
 	"strings"
 )
 
+// MaskTail همه نویسه‌ها جز keep نویسه آخر را ستاره می‌کند.
+// value متن خام است و keep تعداد نویسه آشکار انتهاست. اگر متن کوتاه‌تر باشد همان برمی‌گردد.
+// برای کد ملی و تلفن در جزئیات ممیزی، keep برابر ۴ است.
+func MaskTail(value string, keep int) string {
+	if keep < 0 {
+		keep = 0
+	}
+	runes := []rune(value)
+	if len(runes) <= keep {
+		return value
+	}
+	return strings.Repeat("*", len(runes)-keep) + string(runes[len(runes)-keep:])
+}
+
 // maskedValue جایگزینی ثابت مقدار حساس است و هرگز خود مقدار را نگه نمی‌دارد.
 const maskedValue = "***"
 

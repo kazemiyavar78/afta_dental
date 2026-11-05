@@ -1,6 +1,7 @@
 package tariff
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -16,7 +17,7 @@ import (
 type Service struct {
 	db                  *gorm.DB
 	repo                Repository
-	audit               *audit.Manager
+	audit               audit.Recorder
 	organizationService *organization.Service
 	serviceService      *services.Service
 }
@@ -156,8 +157,9 @@ func toServiceResponse(item *services.ServiceItem) services.Response {
 }
 
 // SaveTariffsForOrganization محاسبه را تکرار کرده و در یک تراکنش همه ردیف‌ها را upsert می‌کند؛ اگر هر صندوق منفی باشد کل عملیات rollback می‌شود.
-func (s *Service) SaveTariffsForOrganization(req CalculateTariffForOrganizationRequest, actorID int, ip string) (*SaveTariffResponse, error) {
-	calcResp, err := s.CalculateTariffForOrganization(req, actorID, ip)
+// ctx زمینه است. req درخواست محاسبه و actor ذخیره‌کننده است. رویداد داخل همان تراکنش ثبت می‌شود.
+func (s *Service) SaveTariffsForOrganization(ctx context.Context, req CalculateTariffForOrganizationRequest, actor audit.Actor) (*SaveTariffResponse, error) {
+	calcResp, err := s.CalculateTariffForOrganization(req, actor.ID(), actor.IP)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +179,8 @@ func (s *Service) SaveTariffsForOrganization(req CalculateTariffForOrganizationR
 	}
 
 	var saved []Tariff
+	var createdCount, updatedCount int
+	codes := make([]string, 0, len(calcResp.Services))
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		txRepo := NewRepository(tx)
 		for _, item := range calcResp.Services {
@@ -200,21 +204,21 @@ func (s *Service) SaveTariffsForOrganization(req CalculateTariffForOrganizationR
 				if err := txRepo.Update(row); err != nil {
 					return apperror.New("DB_ERROR", "خطا در بروزرسانی تعرفه.", err.Error(), 500)
 				}
+				updatedCount++
 			} else {
 				if err := txRepo.Create(row); err != nil {
 					return apperror.New("DB_ERROR", "خطا در ایجاد تعرفه.", err.Error(), 500)
 				}
+				createdCount++
 			}
+			codes = append(codes, item.Service.ServiceCode)
 			saved = append(saved, *row)
 		}
-		return nil
+		return s.recordTariffSave(tx, actor, calcResp.Organization.Name, req.OrganizationID, createdCount, updatedCount, codes)
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ذخیره تعرفه سازمان %d (%d خدمت)", req.OrganizationID, len(saved)))
 
 	items := make([]TariffResponse, 0, len(saved))
 	for i, row := range saved {
@@ -259,7 +263,8 @@ func (s *Service) GetByOrganizationAndService(organizationID, serviceID uint) (*
 }
 
 // RecalculateTariff یک تعرفه خاص را با سه مبلغ مرکز دوباره محاسبه و در صورت معتبر بودن صندوق ذخیره می‌کند.
-func (s *Service) RecalculateTariff(id uint, req RecalculateTariffRequest, actorID int, ip string) (*TariffResponse, error) {
+// ctx زمینه است. id شناسه تعرفه، req مبالغ مرکز و actor ویرایشگر است.
+func (s *Service) RecalculateTariff(ctx context.Context, id uint, req RecalculateTariffRequest, actor audit.Actor) (*TariffResponse, error) {
 	existing, err := s.repo.FindByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -299,6 +304,7 @@ func (s *Service) RecalculateTariff(id uint, req RecalculateTariffRequest, actor
 		)
 	}
 
+	before := *existing
 	existing.Amount = calc.TotalAmount
 	existing.TariffAmount = calc.Tariff
 	existing.OrganizationShare = calc.OrganizationShare
@@ -309,8 +315,9 @@ func (s *Service) RecalculateTariff(id uint, req RecalculateTariffRequest, actor
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی تعرفه.", err.Error(), 500)
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("بازمحاسبه تعرفه %d برای سازمان %d", existing.ID, existing.OrganizationID))
+	if err := s.recordTariffUpdated(ctx, actor, &before, existing, serviceItem.ServiceCode); err != nil {
+		return nil, err
+	}
 
 	resp := toTariffResponse(existing, serviceItem.ServiceCode, serviceItem.Name)
 	return &resp, nil

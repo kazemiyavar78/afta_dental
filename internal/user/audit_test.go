@@ -273,7 +273,7 @@ func TestR1_04_RoleUpdatedOmitsUnchangedFields(t *testing.T) {
 		t.Fatalf("به‌روزرسانی: %v", err)
 	}
 	details := rec.Events[0].Event.Details.(map[string]any)
-	name := details["name"].(fieldChange)
+	name := details["name"].(audit.Change)
 	if name.Before != "قدیم" || name.After != "جدید" {
 		t.Fatalf("تغییر نام نادرست است: %#v", name)
 	}
@@ -374,11 +374,11 @@ func TestR1_21_UserUpdatedDiffOmitsPasswordAndUnchanged(t *testing.T) {
 		}
 	}
 	details := got.Details.(map[string]any)
-	phone := details["phone"].(fieldChange)
+	phone := details["phone"].(audit.Change)
 	if phone.Before != "*******4567" || phone.After != "*******0000" {
 		t.Fatalf("تلفن ماسک نشده است: %#v", phone)
 	}
-	role := details["role"].(fieldChange)
+	role := details["role"].(audit.Change)
 	if role.Before != "پذیرش" || role.After != "پزشک" {
 		t.Fatalf("نقش باید نام باشد نه شناسه: %#v", role)
 	}

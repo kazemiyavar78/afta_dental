@@ -1,7 +1,7 @@
 package regulation
 
 import (
-	"fmt"
+	"context"
 	"strings"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
@@ -12,7 +12,7 @@ import (
 // Service لایه منطق کسب‌وکار ضوابط.
 type Service struct {
 	repo  Repository
-	audit *audit.Manager
+	audit audit.Recorder
 }
 
 // NewService نمونه Service ضوابط را می‌سازد.
@@ -51,7 +51,8 @@ func validateRequest(serviceIDs []uint, durationDays, photoCount int) error {
 }
 
 // Create ضابطه جدید می‌سازد.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. req داده فرم و actor سازنده است. خروجی پاسخ یا خطا است.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	if err := validateRequest(req.ServiceIDs, req.DurationDays, req.PhotoCount); err != nil {
 		return nil, err
 	}
@@ -71,7 +72,9 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	if err := s.repo.Create(item); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد ضابطه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد ضابطه %d", item.ID))
+	if err := s.recordCreated(ctx, actor, item); err != nil {
+		return nil, err
+	}
 	return toResponse(item), nil
 }
 
@@ -114,7 +117,9 @@ func (s *Service) ListActive() ([]Response, error) {
 }
 
 // Update ضابطه را بروزرسانی می‌کند.
-func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+// خروجی پاسخ یا خطا است و فقط فیلدهای عوض‌شده ثبت می‌شوند.
+func (s *Service) Update(ctx context.Context, id uint, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return nil, apperror.ErrNotFound
@@ -129,6 +134,8 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if photoCount == 0 {
 		photoCount = 1
 	}
+	before := *item
+	beforeServices := append([]RegulationService(nil), item.Services...)
 	item.DurationDays = req.DurationDays
 	item.IsActive = req.IsActive
 	item.PhotoCount = photoCount
@@ -143,12 +150,15 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن ضابطه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی ضابطه %d", id))
+	if err := s.recordUpdated(ctx, actor, &before, beforeServices, updated); err != nil {
+		return nil, err
+	}
 	return toResponse(updated), nil
 }
 
 // Delete ضابطه را حذف می‌کند.
-func (s *Service) Delete(id uint, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطا است.
+func (s *Service) Delete(ctx context.Context, id uint, actor audit.Actor) error {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -159,6 +169,5 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 	if err := s.repo.Delete(item); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف ضابطه.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف ضابطه %d", id))
-	return nil
+	return s.recordDeleted(ctx, actor, item)
 }

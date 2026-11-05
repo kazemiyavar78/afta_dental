@@ -163,8 +163,13 @@ func (w *Worker) writeCleanupSummary(deleted int, from, to *time.Time, currentSi
 		log.Printf("خطا در ثبت خلاصه پاکسازی لاگ: %v", err)
 		return
 	}
-	if err := w.audit.LogEvent(nil, "system", audit.EventLogCleanup,
-		fmt.Sprintf("پاکسازی %d رکورد قدیمی SecurityEvents (حجم: %.2f MB)", deleted, currentSize)); err != nil {
+	if err := w.audit.Record(context.Background(), audit.Event{
+		Type:        audit.EventLogCleanup,
+		Result:      audit.ResultSuccess,
+		Actor:       audit.SystemActor(),
+		Description: fmt.Sprintf("پاکسازی %d رکورد قدیمی SecurityEvents (حجم: %.2f MB)", deleted, currentSize),
+		Details:     map[string]any{"deleted": deleted, "size_mb": currentSize},
+	}); err != nil {
 		log.Printf("خطا در ثبت رویداد پاکسازی لاگ: %v", err)
 	}
 }
@@ -234,7 +239,13 @@ func (w *Worker) verifyAuditChain() {
 	if brokenAtID != 0 {
 		description = fmt.Sprintf("شکست زنجیره ممیزی در رویداد %d", brokenAtID)
 	}
-	if err := w.audit.LogEvent(nil, "system", audit.EventDataTampering, description); err != nil {
+	if err := w.audit.Record(context.Background(), audit.Event{
+		Type:        audit.EventDataTampering,
+		Result:      audit.ResultFailure,
+		Reason:      audit.ReasonIntegrityViolation,
+		Actor:       audit.SystemActor(),
+		Description: description,
+	}); err != nil {
 		log.Printf("خطا در ثبت دستکاری زنجیره ممیزی: %v", err)
 	}
 }

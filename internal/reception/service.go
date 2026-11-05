@@ -29,7 +29,7 @@ import (
 type Service struct {
 	db             *gorm.DB
 	repo           Repository
-	audit          *audit.Manager
+	audit          audit.Recorder
 	patientSvc     *patient.Service
 	orgSvc         *organization.Service
 	serviceSvc     *services.Service
@@ -72,11 +72,12 @@ func NewService(
 
 // CalculateServices خدمات را بر اساس بیمه‌ها محاسبه می‌کند (بدون ذخیره).
 func (s *Service) CalculateServices(req CalculateRequest) (*CalculateResponse, error) {
-	return s.CalculateServicesWithActor(req, 0, "")
+	return s.CalculateServicesWithActor(req, context.Background(), audit.Actor{})
 }
 
 // CalculateServicesWithActor محاسبه خدمات با بررسی یکپارچگی کد خاص.
-func (s *Service) CalculateServicesWithActor(req CalculateRequest, actorID int, ip string) (*CalculateResponse, error) {
+// req درخواست محاسبه، ctx زمینه و actor فاعل است. خروجی خطوط محاسبه‌شده یا خطا است.
+func (s *Service) CalculateServicesWithActor(req CalculateRequest, ctx context.Context, actor audit.Actor) (*CalculateResponse, error) {
 	if req.InsuranceID == nil && req.AdditionalInsuranceID == nil {
 		return nil, apperror.New("E-006", "لطفاً قبل از انتخاب خدمت، یک سازمان (پایه یا تکمیلی) انتخاب کنید.", "no organization selected", 400)
 	}
@@ -91,7 +92,7 @@ func (s *Service) CalculateServicesWithActor(req CalculateRequest, actorID int, 
 
 	var specialPct uint8
 	if req.SpecialCodeID != nil && *req.SpecialCodeID > 0 && s.specialCodeSvc != nil {
-		sc, err := s.specialCodeSvc.GetActiveForCalc(*req.SpecialCodeID, actorID, ip)
+		sc, err := s.specialCodeSvc.GetActiveForCalc(ctx, *req.SpecialCodeID, actor)
 		if err != nil {
 			return nil, err
 		}
@@ -116,12 +117,13 @@ func (s *Service) CalculateServicesWithActor(req CalculateRequest, actorID int, 
 }
 
 // CreateReception پذیرش جدید ایجاد می‌کند؛ در صورت Save=true وضعیت saved می‌شود.
-func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, ip string) (*ReceptionResponse, error) {
+// req داده فرم، ctx زمینه و actor ثبت‌کننده است. ذخیره قطعی رویداد را داخل همان تراکنش می‌نویسد.
+func (s *Service) CreateReception(req UpsertReceptionRequest, ctx context.Context, actor audit.Actor) (*ReceptionResponse, error) {
 	if err := s.validateUpsert(req, req.Save); err != nil {
 		return nil, err
 	}
 
-	patientID, err := s.resolvePatient(req.Patient, actorUserID, ip, true)
+	patientID, err := s.resolvePatient(req.Patient, ctx, actor, true)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +139,7 @@ func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, i
 	}
 	var calcLines []CalculatedServiceLine
 	if len(req.Services) > 0 {
-		calcResp, calcErr := s.CalculateServicesWithActor(calcReq, actorUserID, ip)
+		calcResp, calcErr := s.CalculateServicesWithActor(calcReq, ctx, actor)
 		if calcErr != nil {
 			return nil, calcErr
 		}
@@ -164,7 +166,7 @@ func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, i
 	if req.Save {
 		status = string(ReceptionStatusSaved)
 	}
-	regID := uint(actorUserID)
+	regID := uint(actor.ID())
 
 	rec := &Reception{
 		PatientID:                     patientID,
@@ -199,22 +201,25 @@ func (s *Service) CreateReception(req UpsertReceptionRequest, actorUserID int, i
 			if err := NewRepository(tx).Create(rec); err != nil {
 				return apperror.New("DB_ERROR", "خطا در ایجاد پذیرش.", err.Error(), 500)
 			}
-			return s.recordCashFundAddedTx(tx, rec, calcLines, actorUserID, ip)
+			if err := s.recordCashFundAddedTx(tx, rec, calcLines, ctx, actor); err != nil {
+				return err
+			}
+			return s.recordTx(tx, s.receptionCreatedEvent(actor, rec))
 		}); err != nil {
 			return nil, err
 		}
 	} else if err := s.repo.Create(rec); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد پذیرش.", err.Error(), 500)
+	} else if err := s.record(ctx, s.receptionCreatedEvent(actor, rec)); err != nil {
+		return nil, err
 	}
-
-	_ = s.audit.LogEvent(&actorUserID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ایجاد پذیرش %d", rec.ID))
 
 	return s.toResponse(rec)
 }
 
 // UpdateReception پذیرش موجود را ویرایش می‌کند (فقط در صورت عدم حذف).
-func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUserID int, ip string) (*ReceptionResponse, error) {
+// id شناسه پذیرش، req داده جدید، ctx زمینه و actor ویرایشگر است. ذخیره قطعی ممیزی را داخل تراکنش می‌نویسد.
+func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, ctx context.Context, actor audit.Actor) (*ReceptionResponse, error) {
 	rec, err := s.repo.FindByIDUnscoped(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -230,7 +235,7 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 		return nil, err
 	}
 
-	patientID, err := s.resolvePatient(req.Patient, actorUserID, ip, false)
+	patientID, err := s.resolvePatient(req.Patient, ctx, actor, false)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +253,7 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 			AdditionalInsuranceCoverage:   req.AdditionalInsuranceCoverage,
 			AdditionalInsurancePercentage: req.AdditionalInsurancePercentage,
 			Services:                      req.Services,
-		}, actorUserID, ip)
+		}, ctx, actor)
 		if calcErr != nil {
 			return nil, calcErr
 		}
@@ -271,6 +276,7 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 		bookingDate = &bd
 	}
 
+	beforeRec := *rec
 	wasSaved := rec.Status == string(ReceptionStatusSaved)
 	rec.InsuranceID = req.InsuranceID
 	rec.AdditionalInsuranceID = req.AdditionalInsuranceID
@@ -299,7 +305,14 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 			if err := txRepo.ReplaceServices(rec.ID, svcLines); err != nil {
 				return apperror.New("DB_ERROR", "خطا در بروزرسانی خدمات پذیرش.", err.Error(), 500)
 			}
-			return s.recordCashFundAddedTx(tx, rec, calcLines, actorUserID, ip)
+			if err := s.recordCashFundAddedTx(tx, rec, calcLines, ctx, actor); err != nil {
+				return err
+			}
+			ev, changed := s.receptionUpdatedEvent(actor, &beforeRec, rec)
+			if !changed {
+				return nil
+			}
+			return s.recordTx(tx, ev)
 		}); err != nil {
 			return nil, err
 		}
@@ -310,10 +323,12 @@ func (s *Service) UpdateReception(id uint, req UpsertReceptionRequest, actorUser
 		if err := s.repo.ReplaceServices(rec.ID, svcLines); err != nil {
 			return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی خدمات پذیرش.", err.Error(), 500)
 		}
+		if ev, changed := s.receptionUpdatedEvent(actor, &beforeRec, rec); changed {
+			if err := s.record(ctx, ev); err != nil {
+				return nil, err
+			}
+		}
 	}
-
-	_ = s.audit.LogEvent(&actorUserID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ویرایش پذیرش %d", rec.ID))
 
 	updated, err := s.repo.FindByID(rec.ID)
 	if err != nil {
@@ -401,7 +416,8 @@ func (s *Service) GetNextFileNumber() (*patient.LastFileNumberResponse, error) {
 }
 
 // SoftDelete پذیرش را به‌صورت نرم حذف می‌کند.
-func (s *Service) SoftDelete(id uint, actorUserID int, ip string) error {
+// id شناسه پذیرش، ctx زمینه و actor حذف‌کننده است. خروجی خطای دامنه یا ممیزی است.
+func (s *Service) SoftDelete(id uint, ctx context.Context, actor audit.Actor) error {
 	rec, err := s.repo.FindByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperror.ErrNotFound
@@ -411,20 +427,22 @@ func (s *Service) SoftDelete(id uint, actorUserID int, ip string) error {
 	}
 	wasSaved := rec.Status == string(ReceptionStatusSaved)
 	if wasSaved {
-		if err := s.recordCashFundRemoved(rec, actorUserID, ip); err != nil {
+		if err := s.recordCashFundRemoved(rec, ctx, actor); err != nil {
 			return err
 		}
 	}
 	if err := s.repo.Delete(rec.ID); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف پذیرش.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorUserID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("حذف نرم پذیرش %d", id))
-	return nil
+	return s.record(ctx, audit.Event{
+		Type: audit.EventEntityDeleted, Result: audit.ResultSuccess, Actor: actor,
+		Target: s.receptionTarget(rec), Description: "حذف نرم پذیرش",
+	})
 }
 
 // Restore پذیرش حذف‌شده را بازیابی می‌کند.
-func (s *Service) Restore(id uint, actorUserID int, ip string) (*ReceptionResponse, error) {
+// id شناسه پذیرش، ctx زمینه و actor بازیابی‌کننده است. خروجی پذیرش بازیابی‌شده یا خطا است.
+func (s *Service) Restore(id uint, ctx context.Context, actor audit.Actor) (*ReceptionResponse, error) {
 	rec, err := s.repo.FindByIDUnscoped(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -438,11 +456,15 @@ func (s *Service) Restore(id uint, actorUserID int, ip string) (*ReceptionRespon
 	if err := s.repo.Restore(id); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در بازیابی پذیرش.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorUserID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("بازیابی پذیرش %d", id))
 	updated, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن پذیرش.", err.Error(), 500)
+	}
+	if err := s.record(ctx, audit.Event{
+		Type: audit.EventEntityRestored, Result: audit.ResultSuccess, Actor: actor,
+		Target: s.receptionTarget(updated), Description: "بازیابی پذیرش",
+	}); err != nil {
+		return nil, err
 	}
 	return s.toResponse(updated)
 }
@@ -559,7 +581,8 @@ func (s *Service) validateAssistant(assistantID uint) error {
 }
 
 // resolvePatient بیمار موجود را پیدا می‌کند یا در صورت نیاز ایجاد می‌کند.
-func (s *Service) resolvePatient(input PatientInput, actorID int, ip string, allowCreate bool) (uint, error) {
+// input داده بیمار، ctx زمینه، actor فاعل و allowCreate مجوز ساخت بیمار جدید است.
+func (s *Service) resolvePatient(input PatientInput, ctx context.Context, actor audit.Actor, allowCreate bool) (uint, error) {
 	if input.ID != nil && *input.ID > 0 {
 		p, err := s.patientSvc.Get(*input.ID)
 		if err != nil {
@@ -589,7 +612,7 @@ func (s *Service) resolvePatient(input PatientInput, actorID int, ip string, all
 			return 0, apperror.New("BAD_REQUEST", "برای ایجاد بیمار جدید فیلدهای الزامی ناقص است.", "incomplete patient", 400)
 		}
 	}
-	created, err := s.patientSvc.Create(patient.CreateRequest{
+	created, err := s.patientSvc.Create(ctx, patient.CreateRequest{
 		FirstName:         input.FirstName,
 		LastName:          input.LastName,
 		NationalCode:      input.NationalCode,
@@ -600,7 +623,7 @@ func (s *Service) resolvePatient(input PatientInput, actorID int, ip string, all
 		FileNumber:        input.FileNumber,
 		Sex:               input.Sex,
 		IsForeignNational: input.IsForeignNational,
-	}, actorID, ip)
+	}, actor)
 	if err != nil {
 		return 0, err
 	}
@@ -944,21 +967,23 @@ func (s *Service) toResponse(rec *Reception) (*ReceptionResponse, error) {
 }
 
 // recordCashFundAdded مبلغ سهم صندوق پذیرش ذخیره‌شده را در دفتر کل ثبت می‌کند.
-func (s *Service) recordCashFundAdded(rec *Reception, lines []CalculatedServiceLine, actorID int, ip string) error {
-	return s.recordCashFundAddedTx(nil, rec, lines, actorID, ip)
+// rec پذیرش، lines خطوط محاسبه، ctx زمینه و actor فاعل است.
+func (s *Service) recordCashFundAdded(rec *Reception, lines []CalculatedServiceLine, ctx context.Context, actor audit.Actor) error {
+	return s.recordCashFundAddedTx(nil, rec, lines, ctx, actor)
 }
 
 // recordCashFundAddedTx ثبت صندوق را داخل تراکنش بیرونی (در صورت وجود) انجام می‌دهد.
-func (s *Service) recordCashFundAddedTx(tx *gorm.DB, rec *Reception, lines []CalculatedServiceLine, actorID int, ip string) error {
+// tx تراکنش بیرونی است. بقیه پارامترها مانند recordCashFundAdded هستند.
+func (s *Service) recordCashFundAddedTx(tx *gorm.DB, rec *Reception, lines []CalculatedServiceLine, ctx context.Context, actor audit.Actor) error {
 	if s.walletSvc == nil {
 		return nil
 	}
 	amount, svcLines := cashFromCalcLines(lines, rec.Discount)
 	var err error
 	if tx != nil {
-		err = s.walletSvc.RecordReceptionServiceAddedTx(tx, rec.PatientID, rec.ID, amount, svcLines, actorID, ip)
+		err = s.walletSvc.RecordReceptionServiceAddedTx(tx, rec.PatientID, rec.ID, amount, svcLines, ctx, actor)
 	} else {
-		err = s.walletSvc.RecordReceptionServiceAdded(rec.PatientID, rec.ID, amount, svcLines, actorID, ip)
+		err = s.walletSvc.RecordReceptionServiceAdded(rec.PatientID, rec.ID, amount, svcLines, ctx, actor)
 	}
 	if err != nil {
 		if ae, ok := err.(*apperror.AppError); ok {
@@ -970,12 +995,13 @@ func (s *Service) recordCashFundAddedTx(tx *gorm.DB, rec *Reception, lines []Cal
 }
 
 // recordCashFundRemoved مبلغ سهم صندوق پذیرش حذف‌شده را از دفتر کل برمی‌گرداند.
-func (s *Service) recordCashFundRemoved(rec *Reception, actorID int, ip string) error {
+// rec پذیرش حذف‌شونده، ctx زمینه و actor فاعل است.
+func (s *Service) recordCashFundRemoved(rec *Reception, ctx context.Context, actor audit.Actor) error {
 	if s.walletSvc == nil {
 		return nil
 	}
 	amount, svcLines := cashFromReceptionServices(rec.Services, rec.Discount)
-	if err := s.walletSvc.RecordReceptionServiceRemoved(rec.PatientID, rec.ID, amount, svcLines, actorID, ip); err != nil {
+	if err := s.walletSvc.RecordReceptionServiceRemoved(rec.PatientID, rec.ID, amount, svcLines, ctx, actor); err != nil {
 		if ae, ok := err.(*apperror.AppError); ok {
 			return ae
 		}
@@ -1206,7 +1232,8 @@ func (s *Service) validateFinancialRules(rec *Reception) error {
 }
 
 // EndReception پایان پذیرش را با بررسی ضوابط و عکس‌ها انجام می‌دهد.
-func (s *Service) EndReception(id uint, actorID int, ip string) (*EndReceptionResponse, error) {
+// id شناسه پذیرش، ctx زمینه و actor پایان‌دهنده است.
+func (s *Service) EndReception(id uint, ctx context.Context, actor audit.Actor) (*EndReceptionResponse, error) {
 	rec, err := s.repo.FindByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -1290,7 +1317,14 @@ func (s *Service) EndReception(id uint, actorID int, ip string) (*EndReceptionRe
 	if err := s.repo.Update(rec); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ثبت پایان پذیرش.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("پایان پذیرش %d", rec.ID))
+	if err := s.record(ctx, audit.Event{
+		Type: audit.EventEntityUpdated, Result: audit.ResultSuccess, Actor: actor,
+		Target:      s.receptionTarget(rec),
+		Details:     map[string]any{"reception_ended": audit.Change{Before: false, After: true}},
+		Description: "پایان پذیرش",
+	}); err != nil {
+		return nil, err
+	}
 	return &EndReceptionResponse{
 		Success:                true,
 		ReceptionEnded:         true,
@@ -1302,7 +1336,8 @@ func (s *Service) EndReception(id uint, actorID int, ip string) (*EndReceptionRe
 }
 
 // UploadReceptionPhoto عکس دندان را برای پذیرش ذخیره می‌کند.
-func (s *Service) UploadReceptionPhoto(id uint, fileName string, reader io.Reader, actorID int, ip string) (*ReceptionPhotoResponse, error) {
+// id شناسه پذیرش، fileName نام فایل، reader محتوا، ctx زمینه و actor آپلودکننده است.
+func (s *Service) UploadReceptionPhoto(id uint, fileName string, reader io.Reader, ctx context.Context, actor audit.Actor) (*ReceptionPhotoResponse, error) {
 	rec, err := s.repo.FindByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -1338,7 +1373,12 @@ func (s *Service) UploadReceptionPhoto(id uint, fileName string, reader io.Reade
 	if err := s.repo.AddPhoto(photo); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ثبت عکس پذیرش.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUpload, fmt.Sprintf("آپلود عکس پذیرش %d", id))
+	if err := s.record(ctx, audit.Event{
+		Type: audit.EventUpload, Result: audit.ResultSuccess, Actor: actor,
+		Target: s.receptionTarget(rec), Description: "آپلود عکس پذیرش",
+	}); err != nil {
+		return nil, err
+	}
 	return &ReceptionPhotoResponse{
 		ID:       photo.ID,
 		FileName: photo.FileName,

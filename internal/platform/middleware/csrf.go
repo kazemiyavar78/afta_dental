@@ -37,8 +37,9 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 		headerToken := c.GetHeader(CSRFHeaderName)
 
 		if err != nil || cookieToken == "" || headerToken == "" || cookieToken != headerToken {
-			logCSRFFailure(c, auditMgr, "توکن CSRF نامعتبر یا ناقص")
-
+			if !rejectCSRF(c, auditMgr, "توکن CSRF نامعتبر یا ناقص") {
+				return
+			}
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": apperror.ErrCSRF.UserMsg,
 				"code":  apperror.ErrCSRF.Code,
@@ -47,8 +48,9 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 		}
 
 		if !verifyCSRFToken(cookieToken, c, key) {
-			logCSRFFailure(c, auditMgr, "توکن CSRF با نشست مطابقت ندارد")
-
+			if !rejectCSRF(c, auditMgr, "توکن CSRF با نشست مطابقت ندارد") {
+				return
+			}
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": apperror.ErrCSRF.UserMsg,
 				"code":  apperror.ErrCSRF.Code,
@@ -60,13 +62,33 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 	}
 }
 
-// logCSRFFailure نقض CSRF را ثبت می‌کند.
+// rejectCSRF نقض CSRF را ثبت می‌کند و اگر ثبت شکست بخورد پاسخ ۵۰۳ می‌نویسد.
 // c درخواست است، auditMgr ثبت‌کننده است و description توضیح فارسی ردیف است.
+// خروجی true یعنی ثبت شد و صداکننده باید ۴۰۳ بنویسد. false یعنی پاسخ قبلاً نوشته شده.
 // D-14 / FAU_GEN.2: اگر کاربر در context نباشد UserID تهی می‌ماند، نه اشاره‌گر به صفر.
-// خطای ثبت تا مهاجرت سیاست D-13 در همین مسیر رد درخواست نادیده می‌ماند.
-func logCSRFFailure(c *gin.Context, auditMgr *audit.Manager, description string) {
-	actor := ActorFromContext(c)
-	_ = auditMgr.LogEvent(actor.UserID, c.ClientIP(), audit.EventCSRFViolation, description)
+// FAU_STG.4 / D-13: شکست ثبت ممیزی نباید نادیده گرفته شود.
+func rejectCSRF(c *gin.Context, auditMgr *audit.Manager, description string) bool {
+	err := recordCSRFFailure(c, auditMgr, description)
+	if err == nil {
+		return true
+	}
+	c.Abort()
+	WriteError(c, err)
+	return false
+}
+
+// recordCSRFFailure رویداد نقض CSRF را با ثبت‌کننده مرکزی می‌نویسد.
+// c درخواست است، auditMgr ثبت‌کننده است و description توضیح فارسی است. خروجی خطای ممیزی است.
+func recordCSRFFailure(c *gin.Context, auditMgr *audit.Manager, description string) error {
+	if auditMgr == nil {
+		return audit.Unavailable(apperror.ErrInternal)
+	}
+	return audit.Unavailable(auditMgr.Record(c.Request.Context(), audit.Event{
+		Type:        audit.EventCSRFViolation,
+		Result:      audit.ResultFailure,
+		Actor:       ActorFromContext(c),
+		Description: description,
+	}))
 }
 
 func setCSRFCookieIfSession(c *gin.Context, key []byte) {

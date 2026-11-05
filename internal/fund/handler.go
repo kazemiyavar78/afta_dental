@@ -17,8 +17,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.Create(req, uid.(int), c.ClientIP())
+	resp, err := h.service.Create(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return

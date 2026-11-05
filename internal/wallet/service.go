@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,7 +16,7 @@ import (
 // Service لایه منطق کسب‌وکار کیف پول و صندوق.
 type Service struct {
 	repo   Repository
-	audit  *audit.Manager
+	audit  audit.Recorder
 	signer *integrity.Signer
 	db     *gorm.DB
 }
@@ -69,7 +70,7 @@ func (s *Service) ListTransactionsByFile(fileID uint) ([]TransactionResponse, er
 }
 
 // AdjustCash اعتبار نقدی بیمار را افزایش یا کاهش می‌دهد.
-func (s *Service) AdjustCash(req CashAdjustRequest, actorID int, ip string) (*TransactionResponse, error) {
+func (s *Service) AdjustCash(req CashAdjustRequest, ctx context.Context, actor audit.Actor) (*TransactionResponse, error) {
 	if req.Amount <= 0 {
 		return nil, apperror.New("BAD_REQUEST", "مبلغ باید بزرگ‌تر از صفر باشد.", "invalid amount", 400)
 	}
@@ -101,7 +102,7 @@ func (s *Service) AdjustCash(req CashAdjustRequest, actorID int, ip string) (*Tr
 			Action:        action,
 			PaymentMethod: &method,
 			Description:   desc,
-			PerformedBy:   uint(maxInt(actorID, 0)),
+			PerformedBy:   uint(maxInt(actor.ID(), 0)),
 		}
 		if err := txRepo.CreateTransaction(nil, t); err != nil {
 			return err
@@ -111,18 +112,16 @@ func (s *Service) AdjustCash(req CashAdjustRequest, actorID int, ip string) (*Tr
 			return err
 		}
 		created = t
-		return nil
+		return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, "نقدی", string(method), ""))
 	})
 	if err != nil {
 		return nil, mapWalletErr(err)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("تراکنش نقدی پرونده %d مبلغ %d", req.FileID, req.Amount))
 	return ptrTransactionResponse(created), nil
 }
 
 // AdjustCardToCard اعتبار کارت‌به‌کارت را افزایش یا کاهش می‌دهد.
-func (s *Service) AdjustCardToCard(req CardToCardAdjustRequest, actorID int, ip string) (*TransactionResponse, error) {
+func (s *Service) AdjustCardToCard(req CardToCardAdjustRequest, ctx context.Context, actor audit.Actor) (*TransactionResponse, error) {
 	if req.Amount <= 0 {
 		return nil, apperror.New("BAD_REQUEST", "مبلغ باید بزرگ‌تر از صفر باشد.", "invalid amount", 400)
 	}
@@ -196,7 +195,7 @@ func (s *Service) AdjustCardToCard(req CardToCardAdjustRequest, actorID int, ip 
 			TrackingNumber:   &tracking,
 			BankName:         &bankName,
 			PaidAt:           &paidAt,
-			PerformedBy:      uint(maxInt(actorID, 0)),
+			PerformedBy:      uint(maxInt(actor.ID(), 0)),
 		}
 		if err := txRepo.CreateTransaction(nil, t); err != nil {
 			return err
@@ -206,18 +205,16 @@ func (s *Service) AdjustCardToCard(req CardToCardAdjustRequest, actorID int, ip 
 			return err
 		}
 		created = t
-		return nil
+		return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, bankName, string(method), tracking))
 	})
 	if err != nil {
 		return nil, mapWalletErr(err)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("تراکنش کارت‌به‌کارت پرونده %d مبلغ %d", req.FileID, req.Amount))
 	return ptrTransactionResponse(created), nil
 }
 
 // ChargeFromCardReader شارژ کیف پول از پاسخ آزمایشی کارتخوان را ثبت می‌کند (فقط افزایش).
-func (s *Service) ChargeFromCardReader(req CardReaderChargeRequest, actorID int, ip string) (*TransactionResponse, error) {
+func (s *Service) ChargeFromCardReader(req CardReaderChargeRequest, ctx context.Context, actor audit.Actor) (*TransactionResponse, error) {
 	if !req.Approved {
 		return nil, apperror.New("BAD_REQUEST", "تراکنش کارتخوان تأیید نشده است.", "pos not approved", 400)
 	}
@@ -248,7 +245,7 @@ func (s *Service) ChargeFromCardReader(req CardReaderChargeRequest, actorID int,
 			CounterpartyCard: &card,
 			TrackingNumber:   &tracking,
 			PaidAt:           &paidAt,
-			PerformedBy:      uint(maxInt(actorID, 0)),
+			PerformedBy:      uint(maxInt(actor.ID(), 0)),
 		}
 		if err := txRepo.CreateTransaction(nil, t); err != nil {
 			return err
@@ -258,19 +255,17 @@ func (s *Service) ChargeFromCardReader(req CardReaderChargeRequest, actorID int,
 			return err
 		}
 		created = t
-		return nil
+		return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, "کارتخوان", string(method), tracking))
 	})
 	if err != nil {
 		return nil, mapWalletErr(err)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("شارژ کارتخوان پرونده %d مبلغ %d", req.FileID, req.Amount))
 	return ptrTransactionResponse(created), nil
 }
 
 // ChargeFromCreditAccount مبلغ را از سقف حساب اعتباری کسر و کیف پول پرونده را شارژ می‌کند.
 // ورودی: درخواست شارژ، شناسه کاربر عامل و آی‌پی. خروجی: تراکنش ثبت‌شده یا خطا.
-func (s *Service) ChargeFromCreditAccount(req CreditChargeRequest, actorID int, ip string) (*TransactionResponse, error) {
+func (s *Service) ChargeFromCreditAccount(req CreditChargeRequest, ctx context.Context, actor audit.Actor) (*TransactionResponse, error) {
 	if req.Amount <= 0 {
 		return nil, apperror.New("BAD_REQUEST", "مبلغ باید بزرگ‌تر از صفر باشد.", "invalid amount", 400)
 	}
@@ -328,7 +323,7 @@ func (s *Service) ChargeFromCreditAccount(req CreditChargeRequest, actorID int, 
 			CreditAccountID:   &accountID,
 			CreditAccountName: &accountName,
 			PaidAt:            &paidAt,
-			PerformedBy:       uint(maxInt(actorID, 0)),
+			PerformedBy:       uint(maxInt(actor.ID(), 0)),
 		}
 		if tErr := txRepo.CreateTransaction(nil, t); tErr != nil {
 			return tErr
@@ -338,19 +333,17 @@ func (s *Service) ChargeFromCreditAccount(req CreditChargeRequest, actorID int, 
 			return tErr
 		}
 		created = t
-		return nil
+		return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, accountName, string(method), ""))
 	})
 	if err != nil {
 		return nil, mapWalletErr(err)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("شارژ از حساب اعتباری %d پرونده %d مبلغ %d", accountID, req.FileID, req.Amount))
 	return ptrTransactionResponse(created), nil
 }
 
 // SetCreditTransactionPaid وضعیت پرداخت‌شدن یک تراکنش کسر از اعتبار را ثبت یا برمی‌دارد.
 // ورودی: شناسه تراکنش، پرداخت‌شده بودن، شناسه کاربر عامل و آی‌پی. خروجی: تراکنش به‌روزشده یا خطا.
-func (s *Service) SetCreditTransactionPaid(id uint, paid bool, actorID int, ip string) (*TransactionResponse, error) {
+func (s *Service) SetCreditTransactionPaid(id uint, paid bool, ctx context.Context, actor audit.Actor) (*TransactionResponse, error) {
 	t, err := s.repo.FindTransactionByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -365,6 +358,7 @@ func (s *Service) SetCreditTransactionPaid(id uint, paid bool, actorID int, ip s
 		return nil, apperror.New("BAD_REQUEST", "فقط تراکنش کسر از اعتبار قابل تیک پرداخت است.", "not a credit charge", 400)
 	}
 
+	beforePaid := t.CreditPaid
 	t.CreditPaid = paid
 	if paid {
 		if t.CreditPaidAt == nil {
@@ -378,12 +372,9 @@ func (s *Service) SetCreditTransactionPaid(id uint, paid bool, actorID int, ip s
 	if err := s.repo.UpdateTransactionCreditPaid(t); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ثبت وضعیت پرداخت.", err.Error(), 500)
 	}
-	state := "پرداخت‌نشده"
-	if paid {
-		state = "پرداخت‌شده"
+	if err := s.recordCreditPaid(ctx, actor, beforePaid, t); err != nil {
+		return nil, err
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("وضعیت پرداخت تراکنش اعتباری %d: %s", id, state))
 	return ptrTransactionResponse(t), nil
 }
 
@@ -412,10 +403,10 @@ func (s *Service) RecordReceptionServiceAdded(
 	receptionID uint,
 	amount int64,
 	services []ReceptionServiceLine,
-	actorID int,
-	ip string,
+	ctx context.Context,
+	actor audit.Actor,
 ) error {
-	return s.recordReceptionServiceAdded(nil, fileID, receptionID, amount, services, actorID, ip)
+	return s.recordReceptionServiceAdded(nil, fileID, receptionID, amount, services, ctx, actor)
 }
 
 // RecordReceptionServiceAddedTx همان ثبت صندوق پذیرش را داخل تراکنش بیرونی اجرا می‌کند.
@@ -425,13 +416,13 @@ func (s *Service) RecordReceptionServiceAddedTx(
 	receptionID uint,
 	amount int64,
 	services []ReceptionServiceLine,
-	actorID int,
-	ip string,
+	ctx context.Context,
+	actor audit.Actor,
 ) error {
 	if tx == nil {
-		return s.RecordReceptionServiceAdded(fileID, receptionID, amount, services, actorID, ip)
+		return s.RecordReceptionServiceAdded(fileID, receptionID, amount, services, ctx, actor)
 	}
-	return s.recordReceptionServiceAdded(tx, fileID, receptionID, amount, services, actorID, ip)
+	return s.recordReceptionServiceAdded(tx, fileID, receptionID, amount, services, ctx, actor)
 }
 
 // recordReceptionServiceAdded فقط اختلاف صندوق نسبت به خالص قبلی را ثبت می‌کند.
@@ -442,8 +433,8 @@ func (s *Service) recordReceptionServiceAdded(
 	receptionID uint,
 	amount int64,
 	services []ReceptionServiceLine,
-	actorID int,
-	ip string,
+	ctx context.Context,
+	actor audit.Actor,
 ) error {
 	if amount < 0 {
 		amount = 0
@@ -457,7 +448,7 @@ func (s *Service) recordReceptionServiceAdded(
 		if delta == 0 {
 			return nil
 		}
-		return s.applyReceptionCashDelta(txRepo, fileID, receptionID, delta, services, actorID, ip)
+		return s.applyReceptionCashDelta(txRepo, fileID, receptionID, delta, services, ctx, actor)
 	}
 	var err error
 	if tx != nil {
@@ -478,8 +469,8 @@ func (s *Service) applyReceptionCashDelta(
 	receptionID uint,
 	delta int64,
 	services []ReceptionServiceLine,
-	actorID int,
-	ip string,
+	ctx context.Context,
+	actor audit.Actor,
 ) error {
 	creditBefore, err := s.patientCreditBalance(txRepo, fileID)
 	if err != nil {
@@ -498,7 +489,7 @@ func (s *Service) applyReceptionCashDelta(
 			Category:    CategoryCashFund,
 			Action:      ActionServiceAdded,
 			Description: desc,
-			PerformedBy: uint(maxInt(actorID, 0)),
+			PerformedBy: uint(maxInt(actor.ID(), 0)),
 		}
 		if err := s.persistSignedTx(txRepo, t); err != nil {
 			return err
@@ -522,15 +513,13 @@ func (s *Service) applyReceptionCashDelta(
 				Action:        ActionPayment,
 				PaymentMethod: &method,
 				Description:   fmt.Sprintf("پرداخت از اعتبار کیف پول بابت پذیرش %d", receptionID),
-				PerformedBy:   uint(maxInt(actorID, 0)),
+				PerformedBy:   uint(maxInt(actor.ID(), 0)),
 			}
 			if err := s.persistSignedTx(txRepo, p); err != nil {
 				return err
 			}
 		}
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-			fmt.Sprintf("ثبت بدهی خدمات پذیرش %d مبلغ %d", receptionID, delta))
-		return nil
+		return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, "پذیرش", string(ActionServiceAdded), ""))
 	}
 
 	// delta < 0 — کاهش بدهی / خدمات
@@ -546,7 +535,7 @@ func (s *Service) applyReceptionCashDelta(
 		Category:    CategoryCashFund,
 		Action:      ActionServiceRemoved,
 		Description: desc,
-		PerformedBy: uint(maxInt(actorID, 0)),
+		PerformedBy: uint(maxInt(actor.ID(), 0)),
 	}
 	if err := s.persistSignedTx(txRepo, t); err != nil {
 		return err
@@ -554,9 +543,7 @@ func (s *Service) applyReceptionCashDelta(
 	if err := txRepo.AdjustPatientWalletBalanceAllowDebt(nil, fileID, abs); err != nil {
 		return err
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("کاهش بدهی خدمات پذیرش %d مبلغ %d", receptionID, abs))
-	return nil
+	return s.recordTx(txRepo.DB(), walletMoneyEvent(actor, t, "پذیرش", string(ActionServiceRemoved), ""))
 }
 
 // patientCreditBalance اعتبار مثبت فعلی بیمار را برمی‌گرداند (بدهی به‌عنوان صفر اعتبار).
@@ -589,8 +576,8 @@ func (s *Service) RecordReceptionServiceRemoved(
 	receptionID uint,
 	amount int64,
 	services []ReceptionServiceLine,
-	actorID int,
-	ip string,
+	ctx context.Context,
+	actor audit.Actor,
 ) error {
 	_ = amount // مبلغ ورودی نادیده گرفته می‌شود؛ خالص واقعی از دفتر کل خوانده می‌شود
 	err := s.repo.WithTx(func(txRepo Repository) error {
@@ -602,7 +589,7 @@ func (s *Service) RecordReceptionServiceRemoved(
 			return nil
 		}
 		// اختلاف منفی = برگشت کامل بدهی ثبت‌شده
-		return s.applyReceptionCashDelta(txRepo, fileID, receptionID, -prev, services, actorID, ip)
+		return s.applyReceptionCashDelta(txRepo, fileID, receptionID, -prev, services, ctx, actor)
 	})
 	if err != nil {
 		return mapWalletErr(err)
@@ -611,7 +598,7 @@ func (s *Service) RecordReceptionServiceRemoved(
 }
 
 // CreateBankAccount حساب بانکی جدید ایجاد می‌کند.
-func (s *Service) CreateBankAccount(req CreateBankAccountRequest, actorID int, ip string) (*BankAccountResponse, error) {
+func (s *Service) CreateBankAccount(req CreateBankAccountRequest, ctx context.Context, actor audit.Actor) (*BankAccountResponse, error) {
 	a := &BankAccount{
 		BankName:      strings.TrimSpace(req.BankName),
 		ShebaNumber:   strings.TrimSpace(req.ShebaNumber),
@@ -626,8 +613,9 @@ func (s *Service) CreateBankAccount(req CreateBankAccountRequest, actorID int, i
 	if err := s.repo.UpdateBankAccount(a); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش حساب بانکی.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ایجاد حساب بانکی %s", a.AccountName))
+	if err := s.recordBankCreated(ctx, actor, a); err != nil {
+		return nil, err
+	}
 	return &BankAccountResponse{
 		ID: a.ID, BankName: a.BankName, ShebaNumber: a.ShebaNumber,
 		AccountNumber: a.AccountNumber, CardNumber: a.CardNumber,
@@ -636,7 +624,7 @@ func (s *Service) CreateBankAccount(req CreateBankAccountRequest, actorID int, i
 }
 
 // UpdateBankAccount حساب بانکی بدون تراکنش را ویرایش می‌کند.
-func (s *Service) UpdateBankAccount(id uint, req UpdateBankAccountRequest, actorID int, ip string) (*BankAccountResponse, error) {
+func (s *Service) UpdateBankAccount(id uint, req UpdateBankAccountRequest, ctx context.Context, actor audit.Actor) (*BankAccountResponse, error) {
 	a, err := s.repo.FindBankAccountByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -654,6 +642,7 @@ func (s *Service) UpdateBankAccount(id uint, req UpdateBankAccountRequest, actor
 	if count > 0 {
 		return nil, apperror.New("CONFLICT", "حساب بانکی دارای تراکنش است و قابل ویرایش نیست.", "bank account has transactions", 409)
 	}
+	before := *a
 	a.BankName = strings.TrimSpace(req.BankName)
 	a.ShebaNumber = strings.TrimSpace(req.ShebaNumber)
 	a.AccountNumber = strings.TrimSpace(req.AccountNumber)
@@ -663,8 +652,9 @@ func (s *Service) UpdateBankAccount(id uint, req UpdateBankAccountRequest, actor
 	if err := s.repo.UpdateBankAccount(a); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ویرایش حساب بانکی.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ویرایش حساب بانکی %d", id))
+	if err := s.recordBankUpdated(ctx, actor, &before, a); err != nil {
+		return nil, err
+	}
 	return &BankAccountResponse{
 		ID: a.ID, BankName: a.BankName, ShebaNumber: a.ShebaNumber,
 		AccountNumber: a.AccountNumber, CardNumber: a.CardNumber,
@@ -673,7 +663,7 @@ func (s *Service) UpdateBankAccount(id uint, req UpdateBankAccountRequest, actor
 }
 
 // DeleteBankAccount حساب بانکی بدون تراکنش را حذف می‌کند.
-func (s *Service) DeleteBankAccount(id uint, actorID int, ip string) error {
+func (s *Service) DeleteBankAccount(id uint, ctx context.Context, actor audit.Actor) error {
 	a, err := s.repo.FindBankAccountByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperror.ErrNotFound
@@ -694,9 +684,7 @@ func (s *Service) DeleteBankAccount(id uint, actorID int, ip string) error {
 	if err := s.repo.DeleteBankAccount(id); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف حساب بانکی.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("حذف حساب بانکی %d", id))
-	return nil
+	return s.recordBankDeleted(ctx, actor, a)
 }
 
 // ListBankAccounts لیست حساب‌های بانکی را برمی‌گرداند.
@@ -748,7 +736,7 @@ func (s *Service) GetBankAccount(id uint) (*BankAccountResponse, error) {
 
 // CreateCreditAccount حساب اعتباری جدید ایجاد می‌کند.
 // ورودی: درخواست ایجاد، شناسه کاربر عامل و آی‌پی. خروجی: حساب ایجادشده یا خطا.
-func (s *Service) CreateCreditAccount(req CreateCreditAccountRequest, actorID int, ip string) (*CreditAccountResponse, error) {
+func (s *Service) CreateCreditAccount(req CreateCreditAccountRequest, ctx context.Context, actor audit.Actor) (*CreditAccountResponse, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return nil, apperror.New("BAD_REQUEST", "نام اعتبار الزامی است.", "name required", 400)
@@ -770,15 +758,16 @@ func (s *Service) CreateCreditAccount(req CreateCreditAccountRequest, actorID in
 	if err := s.repo.UpdateCreditAccount(a); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش حساب اعتباری.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ایجاد حساب اعتباری %s", a.Name))
+	if err := s.recordCreditCreated(ctx, actor, a); err != nil {
+		return nil, err
+	}
 	resp := toCreditAccountResponse(a)
 	return &resp, nil
 }
 
 // UpdateCreditAccount حساب اعتباری را ویرایش می‌کند.
 // ورودی: شناسه، درخواست ویرایش، شناسه کاربر عامل و آی‌پی. خروجی: حساب ویرایش‌شده یا خطا.
-func (s *Service) UpdateCreditAccount(id uint, req UpdateCreditAccountRequest, actorID int, ip string) (*CreditAccountResponse, error) {
+func (s *Service) UpdateCreditAccount(id uint, req UpdateCreditAccountRequest, ctx context.Context, actor audit.Actor) (*CreditAccountResponse, error) {
 	a, err := s.repo.FindCreditAccountByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apperror.ErrNotFound
@@ -799,6 +788,7 @@ func (s *Service) UpdateCreditAccount(id uint, req UpdateCreditAccountRequest, a
 	if req.CreditLimit < a.UsedAmount {
 		return nil, apperror.New("BAD_REQUEST", "سقف اعتبار نمی‌تواند کمتر از مبلغ استفاده‌شده باشد.", "credit limit below used amount", 400)
 	}
+	beforeCredit := *a
 	a.Name = name
 	a.Description = strings.TrimSpace(req.Description)
 	a.CreditLimit = req.CreditLimit
@@ -807,15 +797,16 @@ func (s *Service) UpdateCreditAccount(id uint, req UpdateCreditAccountRequest, a
 	if err := s.repo.UpdateCreditAccount(a); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ویرایش حساب اعتباری.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("ویرایش حساب اعتباری %d", id))
+	if err := s.recordCreditUpdated(ctx, actor, &beforeCredit, a); err != nil {
+		return nil, err
+	}
 	resp := toCreditAccountResponse(a)
 	return &resp, nil
 }
 
 // DeleteCreditAccount حساب اعتباری بدون پرداخت را حذف می‌کند.
 // ورودی: شناسه، شناسه کاربر عامل و آی‌پی. خروجی: خطا در صورت عدم امکان حذف.
-func (s *Service) DeleteCreditAccount(id uint, actorID int, ip string) error {
+func (s *Service) DeleteCreditAccount(id uint, ctx context.Context, actor audit.Actor) error {
 	a, err := s.repo.FindCreditAccountByID(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperror.ErrNotFound
@@ -832,9 +823,7 @@ func (s *Service) DeleteCreditAccount(id uint, actorID int, ip string) error {
 	if err := s.repo.DeleteCreditAccount(id); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف حساب اعتباری.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("حذف حساب اعتباری %d", id))
-	return nil
+	return s.recordCreditDeleted(ctx, actor, a)
 }
 
 // ListCreditAccounts لیست حساب‌های اعتباری را برمی‌گرداند.

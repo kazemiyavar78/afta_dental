@@ -2,7 +2,7 @@
 package organization
 
 import (
-	"fmt"
+	"context"
 
 	organizationpackage "github.com/tpdenta/afta-reception/internal/organizationPackage"
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
@@ -11,12 +11,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// packageLookup وجود بسته تعرفه را برای انتصاب سازمان بررسی می‌کند.
+// *organizationpackage.Service همین متد را دارد تا تست ایجاد بدون پایگاه بماند.
+type packageLookup interface {
+	Exists(id int) (bool, error)
+}
+
 // Service لایه منطق کسب‌وکار سازمان.
 type Service struct {
 	repo       Repository
-	audit      *audit.Manager
+	audit      audit.Recorder
 	encryptSvc *encryption.OrganizationEncryptionService
-	packageSvc *organizationpackage.Service
+	packageSvc packageLookup
 }
 
 // NewService نمونه Service سازمان را می‌سازد.
@@ -79,10 +85,12 @@ func (s *Service) ensurePackageExists(packageID uint, requiredMsg, notFoundMsg s
 }
 
 // verifyIntegrity هش یکپارچگی سازمان را با داده‌های فعلی بررسی می‌کند؛ در صورت نقض، رویداد دستکاری ثبت و خطا برمی‌گرداند.
-func (s *Service) verifyIntegrity(o *Organization, actorID int, ip string) error {
+// ctx زمینه است. o سازمان و actor فاعل است. شکست ممیزی قبل از ErrIntegrity برمی‌گردد.
+func (s *Service) verifyIntegrity(ctx context.Context, o *Organization, actor audit.Actor) error {
 	if !s.encryptSvc.CheckUserSecurityCode(toSensitiveData(o), o.IntegrityHash) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی سازمان %d (%s)", o.ID, o.Name))
+		if err := s.recordIntegrity(ctx, actor, o); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 	return nil
@@ -153,7 +161,8 @@ func (s *Service) GetFreeOrganization() (*Response, error) {
 }
 
 // Create سازمان جدید می‌سازد، بسته‌ها را منتسب می‌کند و هش امنیتی آن را تولید می‌کند.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. req داده فرم و actor سازنده است. خروجی پاسخ یا خطا است.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	if err := s.ensurePackageExists(req.PackageID, "انتخاب بسته تعرفه الزامی است.", "بسته تعرفه انتخاب‌شده یافت نشد."); err != nil {
 		return nil, err
 	}
@@ -181,11 +190,13 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد سازمان.", err.Error(), 500)
 	}
 
-	created, err := s.repo.FindByID(o.ID)
-	if err != nil {
-		return toResponse(o), nil
+	created := o
+	if loaded, err := s.repo.FindByID(o.ID); err == nil {
+		created = loaded
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد سازمان %s", o.Name))
+	if err := s.recordCreated(ctx, actor, created); err != nil {
+		return nil, err
+	}
 	return toResponse(created), nil
 }
 
@@ -215,7 +226,8 @@ func (s *Service) List() ([]Response, error) {
 }
 
 // Update پس از تایید هش یکپارچگی، سازمان را بروزرسانی (شامل انتصاب بسته‌ها) و هش جدید تولید می‌کند.
-func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+func (s *Service) Update(ctx context.Context, id uint, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	if err := s.ensurePackageExists(req.PackageID, "انتخاب بسته تعرفه الزامی است.", "بسته تعرفه انتخاب‌شده یافت نشد."); err != nil {
 		return nil, err
 	}
@@ -231,10 +243,11 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن سازمان.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(o, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, o, actor); err != nil {
 		return nil, err
 	}
 
+	before := *o
 	o.Name = req.Name
 	o.IsTakmili = req.IsTakmili
 	o.IsActive = req.IsActive
@@ -253,16 +266,19 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی سازمان.", err.Error(), 500)
 	}
 
-	updated, err := s.repo.FindByID(id)
-	if err != nil {
-		return toResponse(o), nil
+	updated := o
+	if loaded, err := s.repo.FindByID(id); err == nil {
+		updated = loaded
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی سازمان %s", o.Name))
+	if err := s.recordUpdated(ctx, actor, &before, updated); err != nil {
+		return nil, err
+	}
 	return toResponse(updated), nil
 }
 
 // Delete پس از تایید هش یکپارچگی، سازمان را به‌صورت soft-delete حذف می‌کند.
-func (s *Service) Delete(id uint, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطا است.
+func (s *Service) Delete(ctx context.Context, id uint, actor audit.Actor) error {
 	o, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -271,15 +287,14 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در خواندن سازمان.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(o, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, o, actor); err != nil {
 		return err
 	}
 
 	if err := s.repo.Delete(o); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف سازمان.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف سازمان %s", o.Name))
-	return nil
+	return s.recordDeleted(ctx, actor, o)
 }
 
 // FixIntegrityHashes پس از تغییر فرمول هش (مثلاً افزودن فیلد)، رکوردهای معتبر قدیمی را با فرمول جدید به‌روز می‌کند.

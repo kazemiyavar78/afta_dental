@@ -1,7 +1,7 @@
 package services
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
@@ -20,7 +20,7 @@ var allowedServiceFeatures = map[string]bool{
 // Service لایه منطق کسب‌وکار خدمات.
 type Service struct {
 	repo       Repository
-	audit      *audit.Manager
+	audit      audit.Recorder
 	encryptSvc *encryption.ServiceEncryptionService
 	signer     *integrity.Signer
 }
@@ -86,10 +86,12 @@ func validateFeatures(features string) error {
 }
 
 // verifyIntegrity هش یکپارچگی خدمت را بررسی می‌کند؛ در صورت نقض، رویداد دستکاری ثبت و خطا برمی‌گرداند.
-func (s *Service) verifyIntegrity(item *ServiceItem, actorID int, ip string) error {
+// ctx زمینه است. item خدمت و actor فاعل است. شکست ممیزی قبل از ErrIntegrity برمی‌گردد.
+func (s *Service) verifyIntegrity(ctx context.Context, item *ServiceItem, actor audit.Actor) error {
 	if !s.encryptSvc.CheckSecurityCode(toSensitiveData(item), item.IntegrityHash) {
-		_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-			fmt.Sprintf("نقض یکپارچگی خدمت %d (%s)", item.ID, item.Name))
+		if err := s.recordIntegrity(ctx, actor, serviceTarget(item), "نقض یکپارچگی خدمت «"+item.ServiceCode+"»"); err != nil {
+			return err
+		}
 		return apperror.ErrIntegrity
 	}
 	return nil
@@ -119,7 +121,8 @@ func applyRequest(item *ServiceItem, code, name, intlCode,
 }
 
 // Create خدمت جدید می‌سازد و هش امنیتی آن را تولید می‌کند.
-func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. req داده فرم و actor سازنده است. نام هدف کد خدمت است.
+func (s *Service) Create(ctx context.Context, req CreateRequest, actor audit.Actor) (*Response, error) {
 	if err := validateFeatures(req.ServiceFeatures); err != nil {
 		return nil, err
 	}
@@ -139,7 +142,9 @@ func (s *Service) Create(req CreateRequest, actorID int, ip string) (*Response, 
 	if err := s.repo.Create(item); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در ایجاد خدمت.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("ایجاد خدمت %s", item.Name))
+	if err := s.recordCreated(ctx, actor, item); err != nil {
+		return nil, err
+	}
 	return toResponse(item), nil
 }
 
@@ -203,7 +208,8 @@ func (s *Service) FindItemByID(id uint) (*ServiceItem, error) {
 }
 
 // Update پس از تایید هش یکپارچگی، خدمت را بروزرسانی و هش جدید تولید می‌کند.
-func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*Response, error) {
+// ctx زمینه است. id شناسه، req داده جدید و actor ویرایشگر است.
+func (s *Service) Update(ctx context.Context, id uint, req UpdateRequest, actor audit.Actor) (*Response, error) {
 	if err := validateFeatures(req.ServiceFeatures); err != nil {
 		return nil, err
 	}
@@ -216,10 +222,11 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 		return nil, apperror.New("DB_ERROR", "خطا در خواندن خدمت.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(item, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, item, actor); err != nil {
 		return nil, err
 	}
 
+	before := *item
 	applyRequest(item, req.ServiceCode, req.Name, req.InternationalCode, req.ServiceFeatures,
 		req.TechnicalCoefficient, req.ProfessionalCoefficient, req.ConsumptionCoefficient,
 		req.ServiceRate, req.ServiceTariff, req.SpecialistRate, req.SpecialistTariff,
@@ -234,12 +241,15 @@ func (s *Service) Update(id uint, req UpdateRequest, actorID int, ip string) (*R
 	if err := s.repo.Update(item); err != nil {
 		return nil, apperror.New("DB_ERROR", "خطا در بروزرسانی خدمت.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("بروزرسانی خدمت %s", item.Name))
+	if err := s.recordUpdated(ctx, actor, &before, item); err != nil {
+		return nil, err
+	}
 	return toResponse(item), nil
 }
 
 // Delete پس از تایید هش یکپارچگی، خدمت را به‌صورت soft-delete حذف می‌کند.
-func (s *Service) Delete(id uint, actorID int, ip string) error {
+// ctx زمینه است. id شناسه و actor حذف‌کننده است. خروجی خطا است.
+func (s *Service) Delete(ctx context.Context, id uint, actor audit.Actor) error {
 	item, err := s.repo.FindByID(id)
 	if err == gorm.ErrRecordNotFound {
 		return apperror.ErrNotFound
@@ -248,15 +258,14 @@ func (s *Service) Delete(id uint, actorID int, ip string) error {
 		return apperror.New("DB_ERROR", "خطا در خواندن خدمت.", err.Error(), 500)
 	}
 
-	if err := s.verifyIntegrity(item, actorID, ip); err != nil {
+	if err := s.verifyIntegrity(ctx, item, actor); err != nil {
 		return err
 	}
 
 	if err := s.repo.Delete(item); err != nil {
 		return apperror.New("DB_ERROR", "خطا در حذف خدمت.", err.Error(), 500)
 	}
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange, fmt.Sprintf("حذف خدمت %s", item.Name))
-	return nil
+	return s.recordDeleted(ctx, actor, item)
 }
 
 // toExcludedResponse مدل دامنه خدمت خارج‌شده را به DTO پاسخ تبدیل می‌کند.
@@ -295,7 +304,8 @@ func (s *Service) ExcludedServiceIDSet(organizationID uint) (map[uint]struct{}, 
 }
 
 // AddExcludedServices خدمات را به لیست خارج‌شده سازمان اضافه می‌کند و هش یکپارچگی را ثبت می‌کند.
-func (s *Service) AddExcludedServices(req ExcludedServicesRequest, actorID int, ip string) ([]ExcludedServiceResponse, error) {
+// ctx زمینه است. req سازمان و خدمات و actor فاعل است. خروجی فهرست یا خطا است.
+func (s *Service) AddExcludedServices(ctx context.Context, req ExcludedServicesRequest, actor audit.Actor) ([]ExcludedServiceResponse, error) {
 	if req.OrganizationID == 0 {
 		return nil, apperror.New("VALIDATION_ERROR", "شناسه سازمان الزامی است.", "organization_id required", 400)
 	}
@@ -329,8 +339,9 @@ func (s *Service) AddExcludedServices(req ExcludedServicesRequest, actorID int, 
 					return nil, apperror.New("DB_ERROR", "خطا در بازیابی خدمت خارج‌شده.", err.Error(), 500)
 				}
 			} else if !VerifyExcludedServiceIntegrity(s.signer, existing) {
-				_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-					fmt.Sprintf("نقض یکپارچگی خدمت خارج‌شده سازمان %d خدمت %d", req.OrganizationID, serviceID))
+				if err := s.recordIntegrity(ctx, actor, excludedTarget(req.OrganizationID, serviceID, ""), "نقض یکپارچگی خدمت خارج‌شده"); err != nil {
+					return nil, err
+				}
 				return nil, apperror.ErrIntegrity
 			}
 			result = append(result, toExcludedResponse(existing))
@@ -348,13 +359,15 @@ func (s *Service) AddExcludedServices(req ExcludedServicesRequest, actorID int, 
 		result = append(result, toExcludedResponse(item))
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("افزودن %d خدمت خارج‌شده برای سازمان %d", len(req.ServiceIDs), req.OrganizationID))
+	if err := s.recordExcluded(ctx, actor, audit.EventEntityCreated, req.OrganizationID, req.ServiceIDs, "افزودن خدمت خارج‌شده"); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
 // RemoveExcludedServices خدمات را از لیست خارج‌شده سازمان حذف می‌کند.
-func (s *Service) RemoveExcludedServices(req ExcludedServicesRequest, actorID int, ip string) error {
+// ctx زمینه است. req سازمان و خدمات و actor فاعل است. خروجی خطا است.
+func (s *Service) RemoveExcludedServices(ctx context.Context, req ExcludedServicesRequest, actor audit.Actor) error {
 	if req.OrganizationID == 0 {
 		return apperror.New("VALIDATION_ERROR", "شناسه سازمان الزامی است.", "organization_id required", 400)
 	}
@@ -371,8 +384,9 @@ func (s *Service) RemoveExcludedServices(req ExcludedServicesRequest, actorID in
 			return apperror.New("DB_ERROR", "خطا در خواندن خدمت خارج‌شده.", err.Error(), 500)
 		}
 		if !VerifyExcludedServiceIntegrity(s.signer, item) {
-			_ = s.audit.LogEvent(&actorID, ip, audit.EventDataTampering,
-				fmt.Sprintf("نقض یکپارچگی خدمت خارج‌شده سازمان %d خدمت %d", req.OrganizationID, serviceID))
+			if err := s.recordIntegrity(ctx, actor, excludedTarget(req.OrganizationID, serviceID, ""), "نقض یکپارچگی خدمت خارج‌شده"); err != nil {
+				return err
+			}
 			return apperror.ErrIntegrity
 		}
 		if err := s.repo.RemoveExcludedService(req.OrganizationID, serviceID); err != nil {
@@ -380,7 +394,5 @@ func (s *Service) RemoveExcludedServices(req ExcludedServicesRequest, actorID in
 		}
 	}
 
-	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
-		fmt.Sprintf("حذف %d خدمت خارج‌شده برای سازمان %d", len(req.ServiceIDs), req.OrganizationID))
-	return nil
+	return s.recordExcluded(ctx, actor, audit.EventEntityDeleted, req.OrganizationID, req.ServiceIDs, "حذف خدمت خارج‌شده")
 }

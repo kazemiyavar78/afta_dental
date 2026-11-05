@@ -25,8 +25,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid := actorID(c)
-	resp, err := h.service.CreateReception(req, uid, c.ClientIP())
+	resp, err := h.service.CreateReception(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -44,7 +43,7 @@ func (h *Handler) Update(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.UpdateReception(id, req, actorID(c), c.ClientIP())
+	resp, err := h.service.UpdateReception(id, req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -106,7 +105,7 @@ func (h *Handler) Calculate(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.CalculateServicesWithActor(req, actorID(c), c.ClientIP())
+	resp, err := h.service.CalculateServicesWithActor(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -148,7 +147,7 @@ func (h *Handler) EndReception(c *gin.Context) {
 	if !ok {
 		return
 	}
-	resp, err := h.service.EndReception(id, actorID(c), c.ClientIP())
+	resp, err := h.service.EndReception(id, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -173,7 +172,7 @@ func (h *Handler) UploadPhoto(c *gin.Context) {
 		return
 	}
 	defer f.Close()
-	resp, err := h.service.UploadReceptionPhoto(id, file.Filename, f, actorID(c), c.ClientIP())
+	resp, err := h.service.UploadReceptionPhoto(id, file.Filename, f, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -205,7 +204,7 @@ func (h *Handler) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.service.SoftDelete(id, actorID(c), c.ClientIP()); err != nil {
+	if err := h.service.SoftDelete(id, c.Request.Context(), middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -218,7 +217,7 @@ func (h *Handler) Restore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	resp, err := h.service.Restore(id, actorID(c), c.ClientIP())
+	resp, err := h.service.Restore(id, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -240,11 +239,4 @@ func parseUintParam(c *gin.Context, name string) (uint, bool) {
 		return 0, false
 	}
 	return uint(id64), true
-}
-
-// actorID شناسه کاربر فعلی را از کانتکست می‌خواند.
-func actorID(c *gin.Context) int {
-	actorIDVal, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorIDVal.(int)
-	return uid
 }

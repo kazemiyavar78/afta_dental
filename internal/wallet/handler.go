@@ -14,14 +14,6 @@ type Handler struct{ service *Service }
 // NewHandler هندلر کیف پول را می‌سازد.
 func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 
-func actorID(c *gin.Context) int {
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	if id, ok := uid.(int); ok {
-		return id
-	}
-	return 0
-}
-
 // GetWalletBalance موجودی کیف پول پرونده را برمی‌گرداند.
 func (h *Handler) GetWalletBalance(c *gin.Context) {
 	fileID, err := strconv.ParseUint(c.Param("fileId"), 10, 64)
@@ -68,7 +60,7 @@ func (h *Handler) AdjustCash(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.AdjustCash(req, actorID(c), c.ClientIP())
+	resp, err := h.service.AdjustCash(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -82,7 +74,7 @@ func (h *Handler) AdjustCardToCard(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.AdjustCardToCard(req, actorID(c), c.ClientIP())
+	resp, err := h.service.AdjustCardToCard(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -96,7 +88,7 @@ func (h *Handler) ChargeFromCardReader(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.ChargeFromCardReader(req, actorID(c), c.ClientIP())
+	resp, err := h.service.ChargeFromCardReader(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -110,7 +102,7 @@ func (h *Handler) ChargeFromCreditAccount(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.ChargeFromCreditAccount(req, actorID(c), c.ClientIP())
+	resp, err := h.service.ChargeFromCreditAccount(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -129,7 +121,7 @@ func (h *Handler) SetCreditTransactionPaid(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.SetCreditTransactionPaid(uint(id), req.CreditPaid, actorID(c), c.ClientIP())
+	resp, err := h.service.SetCreditTransactionPaid(uint(id), req.CreditPaid, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -168,7 +160,7 @@ func (h *Handler) CreateBankAccount(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.CreateBankAccount(req, actorID(c), c.ClientIP())
+	resp, err := h.service.CreateBankAccount(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -187,7 +179,7 @@ func (h *Handler) UpdateBankAccount(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.UpdateBankAccount(uint(id), req, actorID(c), c.ClientIP())
+	resp, err := h.service.UpdateBankAccount(uint(id), req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -202,7 +194,7 @@ func (h *Handler) DeleteBankAccount(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-	if err := h.service.DeleteBankAccount(uint(id), actorID(c), c.ClientIP()); err != nil {
+	if err := h.service.DeleteBankAccount(uint(id), c.Request.Context(), middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
@@ -250,7 +242,7 @@ func (h *Handler) CreateCreditAccount(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.CreateCreditAccount(req, actorID(c), c.ClientIP())
+	resp, err := h.service.CreateCreditAccount(req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -269,7 +261,7 @@ func (h *Handler) UpdateCreditAccount(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	resp, err := h.service.UpdateCreditAccount(uint(id), req, actorID(c), c.ClientIP())
+	resp, err := h.service.UpdateCreditAccount(uint(id), req, c.Request.Context(), middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -284,7 +276,7 @@ func (h *Handler) DeleteCreditAccount(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-	if err := h.service.DeleteCreditAccount(uint(id), actorID(c), c.ClientIP()); err != nil {
+	if err := h.service.DeleteCreditAccount(uint(id), c.Request.Context(), middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}

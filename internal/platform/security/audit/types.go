@@ -22,11 +22,23 @@ const (
 
 // نوع هدف رویداد. مقدار در ستون TargetType ذخیره می‌شود.
 const (
-	TargetUser    = "user"
-	TargetRole    = "role"
-	TargetSession = "session"
-	TargetSetting = "setting"
-	TargetPatient = "patient"
+	TargetUser                = "user"
+	TargetRole                = "role"
+	TargetSession             = "session"
+	TargetSetting             = "setting"
+	TargetPatient             = "patient"
+	TargetOrganization        = "organization"
+	TargetOrganizationPackage = "organization_package"
+	TargetService             = "service"
+	TargetExcludedService     = "excluded_service"
+	TargetTariff              = "tariff"
+	TargetRegulation          = "regulation"
+	TargetSpecialCode         = "special_code"
+	TargetFund                = "fund"
+	TargetReception           = "reception"
+	TargetWallet              = "wallet"
+	TargetBankAccount         = "bank_account"
+	TargetCreditAccount       = "credit_account"
 )
 
 // انواع جاری. ثبت جدید فقط از همین کدهاست.
@@ -160,11 +172,23 @@ var reasonLabels = map[string]string{
 
 // targetLabels برچسب فارسی TargetTypeهای شناخته‌شده است.
 var targetLabels = map[string]string{
-	TargetUser:    "کاربر",
-	TargetRole:    "نقش",
-	TargetSession: "نشست",
-	TargetSetting: "تنظیم",
-	TargetPatient: "بیمار",
+	TargetUser:                "کاربر",
+	TargetRole:                "نقش",
+	TargetSession:             "نشست",
+	TargetSetting:             "تنظیم",
+	TargetPatient:             "بیمار",
+	TargetOrganization:        "سازمان",
+	TargetOrganizationPackage: "بسته تعرفه",
+	TargetService:             "خدمت",
+	TargetExcludedService:     "خدمت خارج‌شده",
+	TargetTariff:              "تعرفه",
+	TargetRegulation:          "ضابطه",
+	TargetSpecialCode:         "کد خاص",
+	TargetFund:                "صندوق",
+	TargetReception:           "پذیرش",
+	TargetWallet:              "کیف پول",
+	TargetBankAccount:         "حساب بانکی",
+	TargetCreditAccount:       "حساب اعتباری",
 }
 
 // LookupEvent برچسب و اهمیت یک نوع را برمی‌گرداند.

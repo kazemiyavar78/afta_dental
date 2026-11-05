@@ -19,8 +19,7 @@ func (h *Handler) Create(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.Create(req, uid.(int), c.ClientIP())
+	resp, err := h.service.Create(c.Request.Context(), req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -48,8 +47,7 @@ func (h *Handler) GetByID(c *gin.Context) {
 // GetByCode کد خاص را با کد برمی‌گرداند.
 func (h *Handler) GetByCode(c *gin.Context) {
 	code := c.Param("code")
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.GetByCode(code, uid.(int), c.ClientIP())
+	resp, err := h.service.GetByCode(c.Request.Context(), code, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -80,8 +78,7 @@ func (h *Handler) Update(c *gin.Context) {
 	if !middleware.BindJSON(c, &req) {
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	resp, err := h.service.Update(uri.ID, req, uid.(int), c.ClientIP())
+	resp, err := h.service.Update(c.Request.Context(), uri.ID, req, middleware.ActorFromContext(c))
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
@@ -98,8 +95,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		middleware.WriteError(c, err)
 		return
 	}
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	if err := h.service.Delete(uri.ID, uid.(int), c.ClientIP()); err != nil {
+	if err := h.service.Delete(c.Request.Context(), uri.ID, middleware.ActorFromContext(c)); err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
