@@ -14,9 +14,9 @@ import (
 
 // Service سرویس مدیریت تنظیمات امنیتی.
 type Service struct {
-	repo    Repository
-	signer  *integrity.Signer
-	audit   *audit.Manager
+	repo   Repository
+	signer *integrity.Signer
+	audit  *audit.Manager
 }
 
 // NewService نمونه Service می‌سازد.
@@ -58,13 +58,14 @@ func (s *Service) GetSettingInt(name string) (int, error) {
 	return strconv.Atoi(val)
 }
 
-// UpdateSetting مقدار تنظیم را به‌روزرسانی و رویداد امنیتی ثبت می‌کند.
+// UpdateSettingByID مقدار یک تنظیم را با شناسه ردیف به‌روز می‌کند و رویداد امنیتی می‌نویسد.
+// id شناسه ردیف، value مقدار جدید، actorUserID کاربر عامل و ip آدرس درخواست است.
+// در خطا، خطای برنامه را برمی‌گرداند. مقدار تنظیم در stdout نوشته نمی‌شود (D-09).
 func (s *Service) UpdateSettingByID(id int, value string, actorUserID int, ip string) error {
 	setting, err := s.repo.FindByID(id)
 	if err != nil {
 		return apperror.New("DB_ERROR", "خطا در خواندن تنظیمات.", err.Error(), 500)
 	}
-	fmt.Println(setting.SettingName, value)
 	hash := s.signer.Sign(setting.SettingName, value)
 	setting = &SecuritySetting{
 		SettingName:     setting.SettingName,
@@ -75,7 +76,8 @@ func (s *Service) UpdateSettingByID(id int, value string, actorUserID int, ip st
 	}
 
 	if err := s.repo.Upsert(setting); err != nil {
-		log.Println("خطا در ذخیره تنظیمات:", err)
+		// D-09: فقط نام کلید و خطا؛ مقدار جدید تنظیم در لاگ نیست.
+		log.Println("خطا در ذخیره تنظیمات:", setting.SettingName, err)
 		return apperror.New("DB_ERROR", "خطا در ذخیره تنظیمات.", err.Error(), 500)
 	}
 

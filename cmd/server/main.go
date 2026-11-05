@@ -30,6 +30,7 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/logretention"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
+	"github.com/tpdenta/afta-reception/internal/platform/security/uploadguard"
 	"github.com/tpdenta/afta-reception/internal/reception"
 	"github.com/tpdenta/afta-reception/internal/regulation"
 	"github.com/tpdenta/afta-reception/internal/report"
@@ -111,8 +112,11 @@ func main() {
 		&user.Permission{},
 		&user.RolePermission{},
 		&loginguard.LoginAttempt{},
+		&logretention.LogCleanupSummary{},
+		&uploadguard.UploadCounter{},
 	}); err != nil {
-		log.Printf("هشدار: برخی جداول migrate نشدند: %v", err)
+		// FPT_FLS.1: schema ناقص یعنی وضعیت امن حفظ نشده؛ سرور نباید بالا بیاید.
+		log.Fatalf("توقف امن راه‌اندازی (FPT_FLS.1): AutoMigrate schema را کامل نساخت و سرور بالا نمی‌آید: %v", err)
 	}
 
 	// لایه امنیتی

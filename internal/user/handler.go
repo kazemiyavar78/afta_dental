@@ -32,8 +32,7 @@ func NewHandler(service *Service, sessionSvc *session.Service, csrfKey string, s
 // Login ورود کاربر.
 func (h *Handler) Login(c *gin.Context) {
 	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 
@@ -72,8 +71,7 @@ func (h *Handler) Logout(c *gin.Context) {
 // CreateUser ایجاد کاربر جدید.
 func (h *Handler) CreateUser(c *gin.Context) {
 	var req CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 
@@ -154,8 +152,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 
 	var req UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 
@@ -175,8 +172,7 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 // ChangePassword تغییر رمز عبور.
 func (h *Handler) ChangePassword(c *gin.Context) {
 	var req ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 
@@ -245,8 +241,7 @@ func (h *Handler) GetRole(c *gin.Context) {
 // CreateRole نقش جدید ایجاد می‌کند.
 func (h *Handler) CreateRole(c *gin.Context) {
 	var req CreateRoleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -268,8 +263,7 @@ func (h *Handler) UpdateRole(c *gin.Context) {
 		return
 	}
 	var req UpdateRoleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -311,11 +305,9 @@ func (h *Handler) ListPermissions(c *gin.Context) {
 // UpdateSecuritySetting تغییر تنظیم امنیتی.
 func (h *Handler) UpdateSecuritySetting(c *gin.Context) {
 	var req UpdateSecuritySettingRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
-
 
 	actorID, _ := c.Get(middleware.ContextKeyUserID)
 	uid, _ := actorID.(int)

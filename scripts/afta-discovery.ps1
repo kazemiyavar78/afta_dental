@@ -20,6 +20,8 @@ $ErrorActionPreference = 'Continue'
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $Root
+. (Join-Path $PSScriptRoot 'lib\redact.ps1')
+. (Join-Path $PSScriptRoot 'lib\db.ps1')
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmm'
 $outDir = Join-Path $Root 'docs\afta\check-output'
@@ -33,18 +35,6 @@ function Write-Out {
     $writer.WriteLine($Text)
     $writer.Flush()
     Write-Host $Text
-}
-
-function Redact {
-    param([string]$Text)
-    if ([string]::IsNullOrEmpty($Text)) { return '' }
-    $s = $Text
-    $s = [regex]::Replace($s, '(?i)(password|pwd|pass)\s*=\s*[^;\s''"]+', '$1=***')
-    $s = [regex]::Replace($s, '(?i)(user id|uid)\s*=\s*[^;\s''"]+', '$1=***')
-    $s = [regex]::Replace($s, '://[^@\s/]+@', '://***@')
-    $s = [regex]::Replace($s, '(?i)"(session_id|sessionId|csrf_token|password|two_factor_secret)"\s*:\s*"[^"]*"', '"$1":"***"')
-    $s = [regex]::Replace($s, '(?i)(X-CSRF-Token|csrf_token)\s*[:=]\s*\S+', '$1=***')
-    return $s
 }
 
 function Invoke-Section {
@@ -89,50 +79,6 @@ function Import-DotEnv {
     Write-Out ('AFTA_PROBE_ADMIN_PASS set: ' + (-not [string]::IsNullOrEmpty($env:AFTA_PROBE_ADMIN_PASS)))
 }
 
-function Convert-AftaConnectionString {
-    param([string]$Raw)
-    if ([string]::IsNullOrWhiteSpace($Raw)) {
-        throw 'DATABASE_URL is empty'
-    }
-    if ($Raw -notmatch '^[a-zA-Z][a-zA-Z0-9+.-]*://') {
-        if ($Raw -notmatch '(?i)Connect Timeout=') {
-            return ($Raw.TrimEnd(';') + ';Connect Timeout=15')
-        }
-        return $Raw
-    }
-    $rest = [regex]::Replace($Raw, '^[a-zA-Z][a-zA-Z0-9+.-]*://', '')
-    $at = $rest.LastIndexOf('@')
-    if ($at -lt 1) { throw 'DATABASE_URL URL has no userinfo' }
-    $userInfo = $rest.Substring(0, $at)
-    $hostPart = $rest.Substring($at + 1)
-    $colon = $userInfo.IndexOf(':')
-    if ($colon -lt 0) { throw 'DATABASE_URL URL has no password separator' }
-    $user = [Uri]::UnescapeDataString($userInfo.Substring(0, $colon))
-    $pass = [Uri]::UnescapeDataString($userInfo.Substring($colon + 1))
-    $q = $hostPart.IndexOf('?')
-    $hostPort = if ($q -ge 0) { $hostPart.Substring(0, $q) } else { $hostPart }
-    $query = if ($q -ge 0) { $hostPart.Substring($q + 1) } else { '' }
-    $database = 'master'
-    $encrypt = $true
-    foreach ($pair in ($query -split '&')) {
-        if ([string]::IsNullOrWhiteSpace($pair)) { continue }
-        $kv = $pair -split '=', 2
-        $k = [Uri]::UnescapeDataString($kv[0])
-        $v = if ($kv.Length -gt 1) { [Uri]::UnescapeDataString($kv[1]) } else { '' }
-        if ($k -eq 'database') { $database = $v }
-        if ($k -eq 'encrypt' -and ($v -eq 'disable' -or $v -eq 'false' -or $v -eq '0')) { $encrypt = $false }
-    }
-    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $builder['Data Source'] = $hostPort
-    $builder['Initial Catalog'] = $database
-    $builder['User ID'] = $user
-    $builder['Password'] = $pass
-    $builder['Encrypt'] = $encrypt
-    $builder['TrustServerCertificate'] = $true
-    $builder['Connect Timeout'] = 15
-    return $builder.ConnectionString
-}
-
 function Invoke-AftaNonQuery {
     param([string]$Sql, [hashtable]$Parameters)
     Add-Type -AssemblyName System.Data
@@ -145,7 +91,9 @@ function Invoke-AftaNonQuery {
         $cmd.CommandTimeout = 60
         if ($Parameters) {
             foreach ($key in $Parameters.Keys) {
-                [void]$cmd.Parameters.AddWithValue("@$key", $Parameters[$key])
+                $value = $Parameters[$key]
+                if ($null -eq $value) { $value = [DBNull]::Value }
+                [void]$cmd.Parameters.AddWithValue("@$key", $value)
             }
         }
         return $cmd.ExecuteNonQuery()
@@ -166,14 +114,16 @@ function Invoke-AftaQuery {
         $cmd.CommandTimeout = 60
         if ($Parameters) {
             foreach ($key in $Parameters.Keys) {
-                $p = $cmd.Parameters.Add("@$key", $Parameters[$key])
-                if ($null -eq $Parameters[$key]) { $p.Value = [DBNull]::Value }
+                $value = $Parameters[$key]
+                if ($null -eq $value) { $value = [DBNull]::Value }
+                [void]$cmd.Parameters.AddWithValue("@$key", $value)
             }
         }
         $adapter = New-Object System.Data.SqlClient.SqlDataAdapter $cmd
         $table = New-Object System.Data.DataTable
         [void]$adapter.Fill($table)
-        return $table
+        # کاما جلوی باز شدن ردیف‌های DataTable در خروجی PowerShell را می‌گیرد.
+        return ,$table
     } finally {
         $conn.Close()
     }
@@ -183,6 +133,10 @@ function Write-DataTable {
     param($Table)
     if ($null -eq $Table) {
         Write-Out '(no table)'
+        return
+    }
+    if ($Table -isnot [System.Data.DataTable]) {
+        Write-Out ("(not a DataTable: {0})" -f $Table.GetType().FullName)
         return
     }
     $cols = @()

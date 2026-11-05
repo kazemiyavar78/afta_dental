@@ -16,7 +16,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 **Backend**
 
-- Go `1.26.4` (`go.mod`). README still says Go 1.22+.
+- Go `1.26.4` (`go.mod`). README names the same version.
 - HTTP: `github.com/gin-gonic/gin` v1.10.0
 - DB driver: `gorm.io/driver/sqlserver` v1.5.4 (indirect), `github.com/microsoft/go-mssqldb` v1.7.2 (indirect)
 - ORM: `gorm.io/gorm` v1.25.12
@@ -39,12 +39,12 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - Routing: react-router-dom ^7.18.1
 - Dates: dayjs ^1.11.21, jalaliday ^3.1.1
 - Export: `@react-pdf/renderer` ^4.9.0, xlsx ^0.18.5
-- Node.js version: UNKNOWN: no `engines` field and no `.nvmrc`.
+- Node.js `22.17.0` (`.nvmrc` and `frontend/package.json` `engines`). This is the version installed on the development machine and is the Node 22 LTS line. CI installs it via `node-version-file: .nvmrc`.
 
 **Schema changes**
 
-- Startup calls GORM `AutoMigrate` through `internal/platform/migrate.Migrate` (`cmd/server/main.go`). A failed table is logged and does not stop the others.
-- `migrations/0001`–`0006` are raw SQL. `golang-migrate` is not a Go dependency. README still documents the migrate CLI. UNKNOWN: whether those SQL files are applied in current deployments.
+- Startup calls GORM `AutoMigrate` through `internal/platform/migrate.Migrate` (`cmd/server/main.go`). If any model fails, the returned error names that table and `main` exits (FPT_FLS.1). The process does not keep serving with a partial schema.
+- schema فقط با GORM AutoMigrate هنگام راه‌اندازی ساخته می‌شود؛ فایل‌های SQL قدیمی هرگز اجرا نشده بودند و حذف شدند (در تاریخچه git موجودند). Q6 روی پایگاه توسعه (۲۰۲۶-۱۱-۰۵) جدول `schema_migrations` را نداشت؛ `Users.UserType` انتهای جدول است و `Receptions` شکل مدل Go را دارد.
 
 ## 3. Folder structure
 
@@ -53,13 +53,14 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/platform/config` — env loading.
 - `internal/platform/db` — SQL Server connection (max 25 open, 10 idle, 5 min lifetime).
 - `internal/platform/migrate` — GORM AutoMigrate / DropTable.
-- `internal/platform/apperror` — API error codes and user messages.
-- `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check.
+- `internal/platform/testutil` — shared test helpers: Gin context, in-memory audit recorder, and (integration build only) a SQL Server transaction that rolls back.
+- `internal/platform/apperror` — API error codes and user messages. `ErrValidation` is code `VALIDATION_ERROR`, HTTP 400, user message «اطلاعات ورودی نامعتبر یا ناقص است.»
+- `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check, and `BindJSON` / `BindQuery`.
 - `internal/platform/security/encryption` — AES-GCM and per-entity integrity hashes.
 - `internal/platform/security/integrity` — HMAC signer.
 - `internal/platform/security/session` — `Sessions` table and `session_id` cookie.
 - `internal/platform/security/settings` — key/value security settings.
-- `internal/platform/security/audit` — hash-chained `SecurityEvents`.
+- `internal/platform/security/audit` — hash-chained `SecurityEvents`. `EventLogger` is the `LogEvent` interface. Services still take `*audit.Manager`. Switching services to the interface is phase 1.
 - `internal/platform/security/loginguard` — per-IP failed-login lock (`LoginAttempts`).
 - `internal/platform/security/logretention` — background log-size and integrity worker.
 - `internal/platform/security/passwordpolicy` — password rules from settings.
@@ -77,11 +78,18 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/specialcode` — third-party “special code” on a reception.
 - `internal/regulation` — service-interval rules and required photos.
 - `internal/report` — SQL report queries.
-- `internal/logs` — security-event list API.
-- `migrations/` — historical SQL migrations (see section 2).
-- `docs/` — this file, IIS notes, AFTA checklist, report design notes.
+- `internal/logs` — security-event list API. The root `.gitignore` and `frontend/.gitignore` use `/logs/` so only a `logs` directory next to that file is ignored. `*.log` still ignores log files. `internal/logs` and `frontend/src/modules/logs` are source and are tracked (D-10).
+- `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs. AFTA working docs: `docs/afta/roadmap.md`, `docs/afta/traceability.md`, `docs/afta/settings.md`, `docs/afta/user-guide.md`, `docs/afta/install-guide.md`, `docs/afta/discovery-phase0-1.md`.
+- `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
+- `scripts/afta-discovery.ps1` — discovery run. Masking and DSN conversion come from `scripts/lib/redact.ps1` and `scripts/lib/db.ps1`. A null SQL parameter is sent as `DBNull`. A query result is returned as one `DataTable` so PowerShell does not unroll the rows.
+- `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
+- `scripts/lib/redact.ps1` — masks passwords, connection strings, and session ids in script output. `scripts/lib/db.ps1` converts a DSN for those scripts and does not open a connection by itself.
+- `.github/workflows/ci.yml` — GitHub Actions on push and pull_request to `main`. Backend job on `windows-latest` (vet, unit test, govulncheck). Frontend job on `ubuntu-latest` (`npm ci`, test, build, `npm audit`). No secrets and no database variables.
+- `.nvmrc` — Node `22.17.0` for local tools and for the frontend CI job.
 - `frontend/src/main.tsx` — mounts React, enables Jalali dayjs.
-- `frontend/src/App.tsx` — RTL Ant Design, React Query, router.
+- `frontend/src/App.tsx` — RTL Ant Design, Persian locale, React Query, router. No custom theme object.
+- `frontend/src/test/renderWithProviders.tsx` — Vitest render with that same ConfigProvider, a QueryClient that does not retry, and MemoryRouter.
+- `frontend/src/test-setup.ts` — Vitest setup (Jalali dayjs and `@testing-library/jest-dom`). `vitest.config.ts` already pointed at this file.
 - `frontend/src/platform/` — HTTP client, auth, layout, shared components, report engine.
 - `frontend/src/modules/` — feature pages (auth, users, roles, reception, patients, organization, organization-packages, services, fund, wallet, special-codes, regulations, tariff, settings, profile, logs, reports).
 - `frontend/vite.config.ts` — dev server port 5173, proxies `/api`.
@@ -128,9 +136,17 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 ## 5. API and UI routes
 
-Base path `/api`. Errors from middleware are JSON `{ "error": string, "code": string }`. Success bodies are the DTO named below. List endpoints return a JSON array unless noted. All routes except login and health require the session cookie. POST/PUT/PATCH/DELETE also require CSRF.
+Base path `/api`. Success bodies are the DTO named below. List endpoints return a JSON array unless noted. All routes except login and health require the session cookie. POST/PUT/PATCH/DELETE also require CSRF.
 
 Permission names are OR. Admin (`HasAllPermissions`) bypasses them.
+
+### Errors
+
+Responses from `middleware.WriteError` are JSON `{ "error": string, "code": string }`. An `apperror.AppError` uses its HTTP status and Persian user message. Any other error is HTTP 500, code `INTERNAL`, message «خطای داخلی سرور رخ داده است.» The original error text is not returned.
+
+Invalid JSON or query input is a Gin error, not an `AppError`. `middleware.BindJSON` and `middleware.BindQuery` answer that with HTTP 400, code `VALIDATION_ERROR`, message «اطلاعات ورودی نامعتبر یا ناقص است.» (`apperror.ErrValidation`, D-08). The response has no field name and no submitted value. The server log records the field name and the validation tag only. URI binding is unchanged.
+
+`UpdateSettingByID` does not write the setting name or value to stdout. If the save fails, the log line is the key name and the error, not the new value (D-09). `CheckWorkHours` does not print the work-hour start or end values. `cmd/seed-admin` still prints the admin username and password; that stays until phase 6.
 
 ### Health and auth (`internal/user/routes.go`, `cmd/server/main.go`)
 
@@ -296,7 +312,8 @@ GORM models. `gorm.Model` adds `ID`, `CreatedAt`, `UpdatedAt`, `DeletedAt` (soft
 | `settings.SecuritySetting` | `SecuritySettings` | SettingName unique, SettingValue, IntegrityHash. |
 | `audit.SecurityEvent` | `SecurityEvents` | Hash chain PrevHash / RowHash. |
 | `loginguard.LoginAttempt` | `LoginAttempts` | PK Ip, FailedCount, LockedUntil. |
-| `logretention.LogCleanupSummary` | `LogCleanupSummaries` | Written by the background worker. Not in the `Migrate` list in `main.go`. |
+| `logretention.LogCleanupSummary` | `LogCleanupSummaries` | Written by the background worker. Included in startup `Migrate`. |
+| `uploadguard.UploadCounter` | `UploadCounters` | Atomic per-user upload window counter. Included in startup `Migrate`. |
 | `patient.Patient` | `patients` | Unique national_code and file_number. IntegrityHash is AES-wrapped hash of identity fields. Fields themselves are stored in plaintext. |
 | `organization.Organization` | `Organizations` | Name, IsTakmili, IsActive, IsFree, PackageID, CenterPackageID, IntegrityHash. |
 | `organizationpackage.OrganizationPackage` | `OrganizationPackages` | Coefficients and subsidy / supplementary / organization percentages. IntegrityHash. |
@@ -342,6 +359,7 @@ Names and purpose only. No values.
 | `INTEGRITY_TICKER` | backend | Loaded into `Config.IntegrityTicker`. Not passed to the worker. The worker uses `LOG_RETENTION_TICKER` only. |
 | `SEED_ADMIN_USERNAME` | `cmd/seed-admin` | Username for the seeded admin. Code fallback exists. |
 | `SEED_ADMIN_PASSWORD` | `cmd/seed-admin` | Password for the seeded admin. Code fallback exists. Do not commit it. |
+| `AFTA_TEST_DATABASE_URL` | `go test -tags integration`, `scripts/afta-check.ps1` | SQL Server DSN for integration tests. Not read by the server. If empty, those tests call `t.Skip`. The check script may ask once to reuse `DATABASE_URL` from `.env` for a development database. It refuses a production-like name and the system databases `master`, `model`, `msdb`, and `tempdb`. |
 | `VITE_API_BASE_URL` | frontend | Axios base URL. Example file sets `/api`. |
 | `VITE_API_PROXY_TARGET` | `frontend/vite.config.ts` | Dev-server proxy target for `/api`. Code fallback `http://127.0.0.1:8080`. Not listed in `frontend/.env.example`. |
 
@@ -358,8 +376,12 @@ From the repo root unless noted. There is no Makefile or Dockerfile.
 - Dependencies: `go mod download`
 - Run API: `go run ./cmd/server` (loads `.env` if present)
 - Seed admin: `go run ./cmd/seed-admin` (needs the same required env as the server; permissions must already exist, so run the server once first — seed calls `FindAllPermissions` and fails if that query fails)
-- Test: `go test ./...`
+- Unit test (no SQL Server): `go test ./...`
+- Vet: `go vet ./...`
+- Integration test (SQL Server, skipped when `AFTA_TEST_DATABASE_URL` is empty): `go test -tags integration ./...`
 - Build: `go build -o server.exe ./cmd/server`
+- Full check (the operator runs this; it writes `docs/afta/check-output/check-<yyyyMMdd-HHmm>.txt`): `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\afta-check.ps1`
+- CI (no database, no secrets): `.github/workflows/ci.yml` on push and pull_request to `main`. Backend (`windows-latest`): `actions/setup-go` with `go-version-file: go.mod` and module cache, then `go vet ./...`, `go test ./... -count=1` (no `integration` tag), `govulncheck ./...`. Frontend (`ubuntu-latest`): Node from `.nvmrc`, npm cache, `npm ci`, `npm test`, `npm run build`, `npm audit --omit=dev --audit-level=high` in `frontend/`. `govulncheck` and `npm audit` use `continue-on-error` until phase 5.
 
 Database create script in README: `CREATE DATABASE afta_reception`. The running app uses whatever database is in `DATABASE_URL`.
 
@@ -367,7 +389,7 @@ Database create script in README: `CREATE DATABASE afta_reception`. The running 
 
 - Install: `npm install`
 - Dev (port 5173, proxies `/api`): `npm run dev`
-- Test: `npm test` (`vitest run`)
+- Test: `npm test` (`vitest run`). Shared render helper: `src/test/renderWithProviders.tsx`.
 - Typecheck and production bundle: `npm run build` (`tsc && vite build`)
 - Preview the bundle: `npm run preview`
 
@@ -376,7 +398,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 ## 9. Architectural decisions visible in the code
 
 - Modular `internal/<feature>` packages with handler, service, repository, and DTO. `main` wires them by hand. No generic DI container.
-- GORM AutoMigrate on startup instead of the SQL files under `migrations/`. README says AutoMigrate is not used. The code in `internal/platform/migrate/migrate.go` uses it. Likely so new entities ship without a separate migrate step; a failing table does not block startup.
+- Schema is only GORM AutoMigrate at startup (`internal/platform/migrate`). A failed table is named in the error and stops the process (FPT_FLS.1). The old SQL files under `migrations/` were never applied (no `schema_migrations` on the development database) and were removed; they remain in git history.
 - SQL Server-specific SQL: `MERGE` for login attempts, `sys.dm_db_partition_stats` for log size, `CONVERT`/`CAST` in patient search, custom `MSSQLUUID` so uniqueidentifier bytes match the driver.
 - Separate HMAC and AES keys. User/patient/org/service integrity stores an encrypted hash (`SecurityCode` / `IntegrityHash`). Wallet-style rows store a raw HMAC and keep older field lists so rows written before credit-account columns still verify (`VerifyTransactionIntegrity`).
 - Permission strings are code-owned and upserted on startup (`SyncPermissions`). Admin is “has every permission”, not a hardcoded role check on every route. The `Admin` role is granted every permission when it exists.
@@ -389,13 +411,16 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 
 ## 10. Known issues, gaps, and TODOs
 
-- README is behind the code: Go version, “no AutoMigrate”, golang-migrate as the migration tool, sample-only reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
+- D-01 is done pending the consultant. `docs/afta/check-output/discovery-20261105-2123.txt` (section Q6) lists `LogCleanupSummaries` and `UploadCounters` on the development database. `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` remain integration tests and are not part of `go test ./...`.
+- `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
+- Root `.env.example` is not in the repository. README lists environment variable names and purpose only. `frontend/.env.example` documents `VITE_API_BASE_URL`.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
 - `fund.update`, `fund.delete`, and `tariff.delete` permissions have no routes.
 - `User.TwoFactorEnabled` and `TwoFactorSecret` are stored and included in the user HMAC (`user/repo.go`). No login or settings handler reads or sets them.
 - `INTEGRITY_TICKER` is loaded and unused. `LOGIN_RATE_LIMIT_PER_MINUTE` is loaded and not referenced again.
-- `LogCleanupSummaries` is not in the `Migrate` call in `main.go`. The worker writes that model. UNKNOWN: whether the table is created elsewhere.
+- Column names are mixed and are left as they are. Fields from `gorm.Model` use the default naming strategy (`id`, `created_at`, `updated_at`, `deleted_at`, snake_case). Fields with an explicit `column:` tag stay PascalCase (for example `UserType`, `Balance`). Renaming them would need a data migration; this pass does not change them.
+- `fund.Fund.Balance` is `float64` and the development column type is float. Backend rules forbid float for money. It is not changed in this pass because existing rows need a data migration. Tracked as D-02 for phase 5.
 - `HasTransactions` on bank-account create/update responses is hardcoded `false` (`wallet/service.go` around the create and update mappings). List and get compute it from transactions.
 - Card payments are simulated. `SimulateCharge` always returns `Approved: true`.
 - `frontend/src/platform/components/DataTable/DataTable.tsx`: `TODO: pagination سمت سرور — فعلاً کلاینت‌ساید`.
@@ -405,4 +430,24 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 - Seed prints the admin username and password to stdout (`cmd/seed-admin/main.go`).
 - Patient, organization, and service business fields are stored in plaintext. AES protects the integrity token, not the columns.
 - Doctor and Reception roles are not created by seed. Default permissions apply only when a role with that exact name already exists and has zero permissions.
-- SQL migrations `0001`–`0006` and GORM AutoMigrate can diverge. UNKNOWN: which one a given database was built from.
+
+## 11. Tests
+
+Unit tests must not open SQL Server. `go test ./...` does not pass `-tags integration`, so files with `//go:build integration` are left out.
+
+Integration tests use that build tag and `AFTA_TEST_DATABASE_URL`. `internal/platform/testutil.OpenTestDB` skips the test when the variable is empty. `WithTestTx` runs the test body in a transaction and rolls it back, including when the test fails.
+
+Shared Go helpers live in `internal/platform/testutil`:
+
+- `NewTestGinContext` builds an `httptest` request and a Gin context. `SetUserID`, `SetRoleName`, `SetPermissions`, and `SetSession` write the same context keys as `internal/platform/middleware` (`userID`, `roleName`, `permissions`, `session`, `sessionID`). No new key names.
+- `FakeAuditRecorder` stores `LogEvent` calls in memory (actor, event type, description). It implements `audit.EventLogger`. Services are still constructed with `*audit.Manager`.
+
+`TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestD08_BindJSON_EmptyOrIncompleteReturnsValidationError` expects HTTP 400 and `VALIDATION_ERROR` for an empty body and for a missing required field, with no field name in the response. `TestD08_BindJSON_ValidBodyFillsStruct` expects `BindJSON` to return true and fill the struct. `TestD08_BindQuery_InvalidValueDoesNotLeakFieldValue` expects the submitted query value to stay out of the response and the server log. `TestComputeRowHash` calls `Manager.computeRowHash` and compares it with an independent HMAC. No injectable clock was added; `computeRowHash` already takes the timestamp.
+
+`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. Neither test is part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
+
+Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`.
+
+`scripts/afta-check.ps1` runs, in order, `GO_VET`, `GO_TEST_UNIT` (`go test ./... -count=1`), `GO_TEST_INTEGRATION` (`go test -tags integration ./... -count=1`), `GOVULNCHECK` (prints `go install golang.org/x/vuln/cmd/govulncheck@latest` and skips when the command is missing), `FRONT_TEST`, `FRONT_BUILD`, `NPM_AUDIT` (`npm audit --omit=dev` in `frontend/`), and `DB_CHECKS` (every `scripts/db-checks/*.sql`, read-only, each in a transaction that rolls back). A failed section does not stop the later sections. The text file ends with one status line per section. Output goes through `scripts/lib/redact.ps1`. Add new database checks as `.sql` files in that folder; do not add a second check script.
+
+`.github/workflows/ci.yml` repeats the no-database parts on GitHub: vet, `go test ./... -count=1`, non-blocking `govulncheck`, frontend test, frontend build, and non-blocking `npm audit --omit=dev --audit-level=high`. It does not run integration tests or `scripts/db-checks/`. `govulncheck` and `npm audit` stay non-blocking until phase 5, when `xlsx@0.18.5` is replaced and both steps must fail the job.

@@ -22,8 +22,7 @@ func NewHandler(service *Service) *Handler {
 // Create ایجاد پذیرش جدید.
 func (h *Handler) Create(c *gin.Context) {
 	var req UpsertReceptionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid := actorID(c)
@@ -42,8 +41,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 	var req UpsertReceptionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.UpdateReception(id, req, actorID(c), c.ClientIP())
@@ -81,8 +79,7 @@ func (h *Handler) List(c *gin.Context) {
 // Navigate ناوبری بین پذیرش‌ها.
 func (h *Handler) Navigate(c *gin.Context) {
 	var q NavQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 	resp, err := h.service.Navigate(q.Cursor, q.Dir)
@@ -106,8 +103,7 @@ func (h *Handler) GetNextFileNumber(c *gin.Context) {
 // Calculate محاسبه خدمات بدون ذخیره.
 func (h *Handler) Calculate(c *gin.Context) {
 	var req CalculateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.CalculateServicesWithActor(req, actorID(c), c.ClientIP())

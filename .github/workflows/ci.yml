@@ -1,0 +1,77 @@
+# CI بدون پایگاه داده.
+# هیچ secret و هیچ متغیر اتصال به SQL Server در این workflow نیست.
+# تست Go بدون -tags integration اجرا می‌شود تا فایل‌های //go:build integration وارد build نشوند.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      # بدون tag integration؛ تست‌هایی که SQL Server می‌خواهند اجرا نمی‌شوند.
+      - name: go test
+        run: go test ./... -count=1
+
+      # نصب با پسوند نسخه تا go.mod مخزن تغییر نکند.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # xlsx@0.18.5 آسیب‌پذیری شناخته‌شده دارد و در فاز ۵ جایگزین می‌شود؛ تا آن زمان govulncheck مانع CI نیست و در فاز ۵ باید blocking شود.
+      - name: govulncheck
+        continue-on-error: true
+        run: govulncheck ./...
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node 22 LTS از .nvmrc؛ همان نسخه‌ای که روی ماشین توسعه استفاده می‌شود.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm test
+        working-directory: frontend
+        run: npm test
+
+      - name: npm run build
+        working-directory: frontend
+        run: npm run build
+
+      # xlsx@0.18.5 آسیب‌پذیری شناخته‌شده دارد و در فاز ۵ جایگزین می‌شود؛ تا آن زمان npm audit مانع CI نیست و در فاز ۵ باید blocking شود.
+      - name: npm audit
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

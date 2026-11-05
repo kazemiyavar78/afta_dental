@@ -168,9 +168,6 @@ func (g *Guard) CheckWorkHours(isAdmin bool) error {
 	startStr, _ := g.settings.GetSettingValue(settings.WorkHoursStart)
 	endStr, _ := g.settings.GetSettingValue(settings.WorkHoursEnd)
 
-	fmt.Println("startStr", startStr)
-	fmt.Println("endStr", endStr)
-
 	start, err := parseTimeOfDay(startStr)
 	if err != nil {
 		start = 8 * 60 // 08:00

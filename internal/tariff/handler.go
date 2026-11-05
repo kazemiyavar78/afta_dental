@@ -17,8 +17,7 @@ func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 func (h *Handler) CalculateTariffForOrganization(c *gin.Context) {
 	uid, _ := c.Get(middleware.ContextKeyUserID)
 	var req CalculateTariffForOrganizationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.CalculateTariffForOrganization(req, uid.(int), c.ClientIP())
@@ -33,8 +32,7 @@ func (h *Handler) CalculateTariffForOrganization(c *gin.Context) {
 func (h *Handler) SaveTariffsForOrganization(c *gin.Context) {
 	uid, _ := c.Get(middleware.ContextKeyUserID)
 	var req CalculateTariffForOrganizationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.SaveTariffsForOrganization(req, uid.(int), c.ClientIP())
@@ -73,8 +71,7 @@ func (h *Handler) RecalculateTariff(c *gin.Context) {
 		return
 	}
 	var req RecalculateTariffRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.RecalculateTariff(uri.ID, req, uid.(int), c.ClientIP())
