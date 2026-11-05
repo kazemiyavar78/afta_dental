@@ -109,6 +109,7 @@ func main() {
 		&session.Session{},
 		&audit.SecurityEvent{},
 		&audit.AuditChainState{},
+		&audit.IntegrityFinding{},
 		&user.Role{},
 		&user.Permission{},
 		&user.RolePermission{},

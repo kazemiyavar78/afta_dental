@@ -139,32 +139,26 @@ func (s *Service) GetAllSettings(IsFn bool) ([]SecuritySetting, error) {
 	return s.repo.FindAll(IsFn)
 }
 
-// VerifyAllIntegrity یکپارچگی تمام تنظیمات را بررسی می‌کند.
-func (s *Service) VerifyAllIntegrity(ip string) (bool, error) {
+// InvalidSettings تنظیماتی را برمی‌گرداند که HMAC آن‌ها با نام و مقدار نمی‌خواند.
+// خروجی همه ردیف‌های نامعتبر است. حلقه تا آخر ادامه دارد و اینجا رویدادی ثبت نمی‌شود.
+// هشدار دوره‌ای در audit.ApplyIntegrityFindings یک بار برای هر ردیف ساخته می‌شود.
+func (s *Service) InvalidSettings() ([]audit.IntegritySubject, error) {
 	list, err := s.repo.FindAll(false)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
+	bad := make([]audit.IntegritySubject, 0)
 	for _, setting := range list {
-		if !s.signer.Verify(setting.IntegrityHash, setting.SettingName, setting.SettingValue) {
-			actor := audit.Actor{Username: "system", IP: ip}
-			if ip == "system" || ip == "" {
-				actor = audit.SystemActor()
-			}
-			if err := s.record(context.Background(), audit.Event{
-				Type:        audit.EventDataTampering,
-				Result:      audit.ResultFailure,
-				Reason:      audit.ReasonIntegrityViolation,
-				Actor:       actor,
-				Target:      audit.Target{Type: audit.TargetSetting, ID: setting.SettingName, Name: settingLabel(setting.SettingName)},
-				Description: "دستکاری تنظیم امنیتی: " + setting.SettingName,
-			}); err != nil {
-				return false, err
-			}
-			return false, nil
+		if s.signer.Verify(setting.IntegrityHash, setting.SettingName, setting.SettingValue) {
+			continue
 		}
+		bad = append(bad, audit.IntegritySubject{
+			EntityType: audit.TargetSetting,
+			EntityID:   setting.SettingName,
+			EntityName: settingLabel(setting.SettingName),
+		})
 	}
-	return true, nil
+	return bad, nil
 }
 
 // RemoveRetiredChainCheckpoint اگر ردیف LastVerifiedEventId مانده باشد آن را حذف می‌کند و SETTING_REMOVED می‌نویسد.

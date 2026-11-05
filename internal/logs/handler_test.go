@@ -188,6 +188,50 @@ func TestPP04_IntegrityRouteReturnsChainStatus(t *testing.T) {
 	if body.LastResult != audit.ChainResultBroken || body.BrokenAtID != 42 || body.LastCheckAt == nil || !body.LastCheckAt.Equal(checked) {
 		t.Fatalf("وضعیت زنجیره نادرست است: %+v", body)
 	}
+	if body.OpenFindingsCount != 0 || body.OpenFindings == nil {
+		t.Fatalf("بدون یافته، شمارش صفر و فهرست خالی است: %+v", body)
+	}
+}
+
+type stubOpenFindings struct {
+	rows []audit.IntegrityFinding
+}
+
+func (s stubOpenFindings) ListAllOpen(context.Context) ([]audit.IntegrityFinding, error) {
+	return s.rows, nil
+}
+
+// TestPP04_IntegrityIncludesOpenFindings تعداد و فهرست نوع، نام و اولین زمان را برمی‌گرداند.
+func TestPP04_IntegrityIncludesOpenFindings(t *testing.T) {
+	seen := time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
+	svc := NewService(nil, stubChain{state: audit.AuditChainState{
+		LastCheckAt: seen,
+		LastResult:  audit.ChainResultOK,
+	}})
+	svc.findings = stubOpenFindings{rows: []audit.IntegrityFinding{
+		{EntityType: audit.TargetUser, EntityID: "4", EntityName: "mina", FirstSeenAt: seen},
+		{EntityType: audit.TargetRole, EntityID: "2", EntityName: "reception", FirstSeenAt: seen.Add(time.Minute)},
+	}}
+	w := get(mountLogs(NewHandler(svc, &testutil.FakeAuditRecorder{}), []string{"logs.read"}), "/api/logs/integrity")
+	if w.Code != http.StatusOK {
+		t.Fatalf("integrity: %d %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "IntegrityHash") || strings.Contains(w.Body.String(), "RowHash") {
+		t.Fatal("هش نباید در پاسخ یافته باشد")
+	}
+	var body IntegrityResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.OpenFindingsCount != 2 || len(body.OpenFindings) != 2 {
+		t.Fatalf("باید دو یافته باز باشد: %+v", body)
+	}
+	if body.OpenFindings[0].EntityType != audit.TargetUser || body.OpenFindings[0].EntityTypeLabel != "کاربر" || body.OpenFindings[0].EntityName != "mina" || !body.OpenFindings[0].FirstSeenAt.Equal(seen) {
+		t.Fatalf("یافته کاربر نادرست است: %+v", body.OpenFindings[0])
+	}
+	if body.OpenFindings[1].EntityTypeLabel != "نقش" || body.OpenFindings[1].EntityName != "reception" {
+		t.Fatalf("یافته نقش نادرست است: %+v", body.OpenFindings[1])
+	}
 }
 
 // TestR1_01_MyLogsIsPaged لاگ خود کاربر را صفحه‌بندی می‌کند و صفحه بعد را ممیزی نمی‌کند.

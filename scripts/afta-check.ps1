@@ -170,12 +170,29 @@ function Invoke-Native {
     )
     Push-Location $WorkingDirectory
     try {
-        & $File @ArgumentList 2>&1 | ForEach-Object { Write-Out ([string]$_) }
+        $buf = New-Object System.Text.StringBuilder
+        & $File @ArgumentList 2>&1 | ForEach-Object {
+            $text = [string]$_
+            [void]$buf.AppendLine($text)
+            Write-Out $text
+        }
+        $script:LastNativeOutput = $buf.ToString()
         if ($null -eq $LASTEXITCODE) { return 0 }
         return [int]$LASTEXITCODE
     } finally {
         Pop-Location
     }
+}
+
+# true یعنی شکست govulncheck به‌خاطر نرسیدن به پایگاه آسیب‌پذیری است، نه پیدا شدن آسیب‌پذیری.
+# Text خروجی دستور و Code کد خروج است. خروج ۳ و متن Vulnerability همچنان شکست واقعی است.
+function Test-GovulnAccessDenied {
+    param([string]$Text, [int]$Code)
+    if ($Code -eq 3) { return $false }
+    if ($Text -match '(?i)Vulnerability #|Your code is affected') { return $false }
+    if ($Text -match '403') { return $true }
+    if ($Text -match 'vuln\.go\.dev') { return $true }
+    return $false
 }
 
 # نتیجه پاس/شکست یک دستور را به شکل وضعیت بخش برمی‌گرداند.
@@ -336,7 +353,14 @@ try {
             return @{ Exit = 0; Status = 'SKIP'; Note = 'not installed' }
         }
         $code = Invoke-Native -File 'govulncheck' -ArgumentList @('./...') -WorkingDirectory $Root
-        return Get-CommandStatus -Code $code -Note ''
+        if ($code -eq 0) {
+            return @{ Exit = 0; Status = 'PASS'; Note = '' }
+        }
+        if (Test-GovulnAccessDenied -Text $script:LastNativeOutput -Code $code) {
+            $note = 'پایگاه آسیب‌پذیری Go از این شبکه در دسترس نیست؛ نتیجه govulncheck را در CI گیت‌هاب ببینید'
+            return @{ Exit = 0; Status = 'SKIP'; Note = $note }
+        }
+        return @{ Exit = $code; Status = 'FAIL'; Note = 'govulncheck failed' }
     }
 
     Invoke-CheckSection 'FRONT_TEST' {

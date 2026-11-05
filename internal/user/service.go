@@ -422,50 +422,44 @@ func (s *Service) CheckCurrentUserSecurityCode(userID int) (bool, error) {
 	return s.encryptSvc.CheckUserSecurityCode(user.ToSensitiveData(), user.SecurityCode), nil
 }
 
-// VerifyAllUsers یکپارچگی تمام کاربران را بررسی می‌کند.
-func (s *Service) VerifyAllUsers(ip string) (bool, error) {
+// InvalidUsers کاربرانی را برمی‌گرداند که HMAC آن‌ها با داده ذخیره‌شده نمی‌خواند.
+// خروجی همه ردیف‌های نامعتبر است. حلقه با اولین خرابی قطع نمی‌شود و رویدادی نمی‌نویسد.
+// ثبت هشدار در audit.ApplyIntegrityFindings است تا هر دور تکرار نشود.
+func (s *Service) InvalidUsers() ([]audit.IntegritySubject, error) {
 	users, err := s.repo.FindAll()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, u := range users {
-		if !VerifyUserIntegrity(s.signer, &u) {
-			actor := audit.SystemActor()
-			if ip != "" && ip != "system" {
-				actor.IP = ip
-			}
-			if err := s.recordIntegrity(context.Background(), actor, userTarget(u.ID, u.Username), "دستکاری کاربر "+u.Username); err != nil {
-				return false, err
-			}
-			return false, nil
+	bad := make([]audit.IntegritySubject, 0)
+	for i := range users {
+		if VerifyUserIntegrity(s.signer, &users[i]) {
+			continue
 		}
+		bad = append(bad, subjectUser(users[i]))
 	}
-	return true, nil
+	return bad, nil
 }
 
-// VerifyAllRoles یکپارچگی تمام نقش‌ها را بررسی می‌کند.
-func (s *Service) VerifyAllRoles(ip string) (bool, error) {
+// InvalidRoles نقش‌هایی را برمی‌گرداند که HMAC آن‌ها با مجوزهای فعلی نمی‌خواند.
+// خطای خواندن مجوز کل بررسی را متوقف می‌کند تا یافته باز به‌اشتباه بسته نشود.
+// خروجی فقط ردیف‌های نامعتبر است و رویداد ممیزی نمی‌سازد.
+func (s *Service) InvalidRoles() ([]audit.IntegritySubject, error) {
 	roles, err := s.repo.FindAllRoles()
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, r := range roles {
-		permIDs, err := s.repo.FindPermissionIDsByRoleID(r.ID)
+	bad := make([]audit.IntegritySubject, 0)
+	for i := range roles {
+		permIDs, err := s.repo.FindPermissionIDsByRoleID(roles[i].ID)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		if !VerifyRoleIntegrity(s.signer, &r, permIDs) {
-			actor := audit.SystemActor()
-			if ip != "" && ip != "system" {
-				actor.IP = ip
-			}
-			if err := s.recordIntegrity(context.Background(), actor, roleTarget(&r), "دستکاری نقش "+r.Name); err != nil {
-				return false, err
-			}
-			return false, nil
+		if VerifyRoleIntegrity(s.signer, &roles[i], permIDs) {
+			continue
 		}
+		bad = append(bad, subjectRole(roles[i]))
 	}
-	return true, nil
+	return bad, nil
 }
 
 // SyncPermissions مجوزهای ثابت سیستم را در دیتابیس ایجاد یا بروزرسانی می‌کند.

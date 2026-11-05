@@ -56,7 +56,8 @@ func TestR1_24_LastVerifiedEventIdIsNotAUserSetting(t *testing.T) {
 }
 
 type memSettingsRepo struct {
-	rows map[string]*SecuritySetting
+	rows   map[string]*SecuritySetting
+	listed []SecuritySetting
 }
 
 func (m *memSettingsRepo) FindByName(name string) (*SecuritySetting, error) {
@@ -67,7 +68,12 @@ func (m *memSettingsRepo) FindByName(name string) (*SecuritySetting, error) {
 	return row, nil
 }
 
-func (m *memSettingsRepo) FindAll(bool) ([]SecuritySetting, error) { return nil, nil }
+func (m *memSettingsRepo) FindAll(bool) ([]SecuritySetting, error) {
+	if m.listed != nil {
+		return append([]SecuritySetting(nil), m.listed...), nil
+	}
+	return nil, nil
+}
 
 func (m *memSettingsRepo) Upsert(*SecuritySetting) error { return nil }
 
@@ -147,5 +153,29 @@ func TestR1_17_SettingChangedRecordsBeforeAndAfter(t *testing.T) {
 	details, ok := got.Details.(map[string]string)
 	if !ok || details["key"] != MaximumNumberOfFailedLogin || details["before"] != "5" || details["after"] != "7" {
 		t.Fatalf("جزئیات قبل و بعد نادرست است: %#v", got.Details)
+	}
+}
+
+// TestD23_InvalidSettings_ReturnsEveryBrokenRow هر دو تنظیم خراب را برمی‌گرداند و رویداد نمی‌سازد.
+// تنظیم سالم وسط فهرست نباید بررسی را قطع کند.
+func TestD23_InvalidSettings_ReturnsEveryBrokenRow(t *testing.T) {
+	signer := integrity.NewSigner("test-integrity-key-32bytes-long!!")
+	ok := SecuritySetting{SettingName: "Password_MinLength", SettingValue: "8"}
+	ok.IntegrityHash = signer.Sign(ok.SettingName, ok.SettingValue)
+	repo := &memSettingsRepo{listed: []SecuritySetting{
+		{SettingName: "A", SettingValue: "1", IntegrityHash: "bad"},
+		ok,
+		{SettingName: "B", SettingValue: "2", IntegrityHash: "bad"},
+	}}
+	aud := &memAudit{}
+	got, err := (&Service{repo: repo, signer: signer, audit: aud}).InvalidSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].EntityID != "A" || got[1].EntityID != "B" || got[0].EntityType != audit.TargetSetting {
+		t.Fatalf("هر دو تنظیم خراب باید برگردند: %+v", got)
+	}
+	if len(aud.events) != 0 {
+		t.Fatal("سرویس نباید رویداد بسازد")
 	}
 }

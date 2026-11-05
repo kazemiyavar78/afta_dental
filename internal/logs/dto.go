@@ -38,12 +38,23 @@ type MetaResponse struct {
 	TargetTypes []Option `json:"target_types"`
 }
 
-// IntegrityResponse وضعیت آخرین بررسی زنجیره است.
+// OpenFindingItem یک یافته باز یکپارچگی برای کارت صحت لاگ است.
+// نوع، نام و اولین زمان برای مدیر کافی است. هش ردیف در پاسخ نیست.
+type OpenFindingItem struct {
+	EntityType      string    `json:"entity_type"`
+	EntityTypeLabel string    `json:"entity_type_label"`
+	EntityName      string    `json:"entity_name"`
+	FirstSeenAt     time.Time `json:"first_seen_at"`
+}
+
+// IntegrityResponse وضعیت آخرین بررسی زنجیره و یافته‌های باز است.
 // هش و لنگر در پاسخ نیستند. FAU_STG.2: نتیجه بررسی به دارنده مجوز خواندن لاگ نشان داده می‌شود.
 type IntegrityResponse struct {
-	LastCheckAt *time.Time `json:"last_check_at"`
-	LastResult  string     `json:"last_result"`
-	BrokenAtID  int64      `json:"broken_at_id"`
+	LastCheckAt       *time.Time        `json:"last_check_at"`
+	LastResult        string            `json:"last_result"`
+	BrokenAtID        int64             `json:"broken_at_id"`
+	OpenFindingsCount int               `json:"open_findings_count"`
+	OpenFindings      []OpenFindingItem `json:"open_findings"`
 }
 
 // eventRow نتیجه اسکن کوئری است و هنوز برچسب فارسی ندارد.

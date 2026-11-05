@@ -24,8 +24,8 @@ export async function fetchLogMeta(): Promise<LogMeta> {
 }
 
 /**
- * نتیجه آخرین بررسی زنجیره ممیزی را می‌گیرد. هش در پاسخ نیست.
- * @returns زمان بررسی، نتیجه و شناسه اولین ردیف خراب
+ * نتیجه آخرین بررسی زنجیره و یافته‌های باز را می‌گیرد. هش در پاسخ نیست.
+ * @returns زمان بررسی، نتیجه، شناسه اولین ردیف خراب، تعداد و فهرست یافته‌ها
  */
 export async function fetchLogIntegrity(): Promise<LogIntegrity> {
   const { data } = await httpClient.get<LogIntegrity>('/logs/integrity');

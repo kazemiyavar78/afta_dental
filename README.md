@@ -65,7 +65,7 @@ scripts/afta-check.ps1      بررسی واحد، integration، فرانت و SQ
 | `ALLOWED_ORIGINS` | مبدأهای CORS، جداشده با ویرگول. |
 | `RATE_LIMIT_PER_MINUTE` | سقف درخواست سراسری. پیش‌فرض کد ۱۲۰. |
 | `LOGIN_RATE_LIMIT_PER_MINUTE` | در config خوانده می‌شود. محدودیت ورود علاوه بر آن از `loginguard` و `MaximumNumberOfFailedLogin` می‌آید. |
-| `LOG_RETENTION_TICKER` | فاصله worker پاک‌سازی لاگ و صحت. مدت Go. پیش‌فرض کد `15m`. |
+| `LOG_RETENTION_TICKER` | فاصله دورهای بعدی worker پاک‌سازی لاگ و صحت. مدت Go. پیش‌فرض کد `15m`. دور اول بلافاصله بعد از راه‌اندازی اجرا می‌شود. |
 | `INTEGRITY_TICKER` | در config خوانده می‌شود. worker فقط `LOG_RETENTION_TICKER` را به کار می‌برد. |
 | `SEED_ADMIN_USERNAME` | نام کاربر Admin در `cmd/seed-admin`. اگر نباشد کد نام جایگزین دارد. |
 | `SEED_ADMIN_PASSWORD` | رمز همان کاربر. اگر نباشد کد رمز جایگزین دارد. در مخزن و لاگ نیاید. |

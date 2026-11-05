@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/renderWithProviders';
 import { fetchLogIntegrity, fetchLogMeta, fetchLogs } from '../api';
@@ -39,6 +39,8 @@ describe('LogsPage', () => {
       last_check_at: '2026-11-05T09:00:00Z',
       last_result: 'ok',
       broken_at_id: 0,
+      open_findings_count: 0,
+      open_findings: [],
     });
   });
 
@@ -61,10 +63,40 @@ describe('LogsPage', () => {
       last_check_at: '2026-11-05T09:00:00Z',
       last_result: 'broken',
       broken_at_id: 42,
+      open_findings_count: 0,
+      open_findings: [],
     });
     renderWithProviders(<LogsPage />, { route: '/logs' });
     expect(await screen.findByText('خراب')).toBeInTheDocument();
     expect(screen.getByText('اولین ردیف خراب: 42')).toBeInTheDocument();
     await waitFor(() => expect(fetchLogs).toHaveBeenCalled());
+  });
+
+  it('تعداد یافته‌های باز را نشان می‌دهد و با کلیک فهرست را باز می‌کند', async () => {
+    vi.mocked(fetchLogIntegrity).mockResolvedValue({
+      last_check_at: '2026-11-05T09:00:00Z',
+      last_result: 'ok',
+      broken_at_id: 0,
+      open_findings_count: 2,
+      open_findings: [
+        {
+          entity_type: 'user',
+          entity_type_label: 'کاربر',
+          entity_name: 'mina-broken',
+          first_seen_at: '2026-11-05T08:00:00Z',
+        },
+        {
+          entity_type: 'role',
+          entity_type_label: 'نقش',
+          entity_name: 'role-broken',
+          first_seen_at: '2026-11-05T08:05:00Z',
+        },
+      ],
+    });
+    renderWithProviders(<LogsPage />, { route: '/logs' });
+    fireEvent.click(await screen.findByRole('button', { name: 'یافته‌های باز: 2' }));
+    expect(await screen.findByText(/mina-broken/)).toBeInTheDocument();
+    expect(screen.getByText(/role-broken/)).toBeInTheDocument();
+    expect(screen.getByText('یافته‌های باز یکپارچگی')).toBeInTheDocument();
   });
 });

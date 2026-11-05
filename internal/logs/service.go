@@ -18,17 +18,28 @@ type chainReader interface {
 	LoadChainState() (audit.AuditChainState, error)
 }
 
+// openFindingReader یافته‌های بازی را می‌خواند که هنوز رفع نشده‌اند.
+// audit.FindingStore همین متد را دارد.
+type openFindingReader interface {
+	ListAllOpen(ctx context.Context) ([]audit.IntegrityFinding, error)
+}
+
 // Service فهرست لاگ، فراداده فیلتر و وضعیت زنجیره را می‌سازد.
 type Service struct {
-	events eventRepo
-	chain  chainReader
+	events   eventRepo
+	chain    chainReader
+	findings openFindingReader
 }
 
 // NewService سرویس لاگ را می‌سازد.
-// db اتصال خواندن رویدادهاست و chain وضعیت AuditChainStates را می‌دهد.
-// خروجی سرویس آماده هندلر است.
+// db اتصال خواندن رویدادها و یافته‌هاست و chain وضعیت AuditChainStates را می‌دهد.
+// اگر db تهی باشد یافته‌ها خالی می‌مانند تا تست بدون پایگاه همان وضعیت زنجیره را ببیند.
 func NewService(db *gorm.DB, chain chainReader) *Service {
-	return &Service{events: eventRepo{db: db}, chain: chain}
+	svc := &Service{events: eventRepo{db: db}, chain: chain}
+	if db != nil {
+		svc.findings = audit.NewFindingStore(db)
+	}
+	return svc
 }
 
 // List یک صفحه از لاگ را با برچسب فارسی برمی‌گرداند.
@@ -67,8 +78,8 @@ func (s *Service) Meta(ctx context.Context) (MetaResponse, error) {
 	}, nil
 }
 
-// Integrity آخرین نتیجه بررسی زنجیره را برمی‌گرداند.
-// ctx لغو درخواست است. خروجی زمان بررسی، نتیجه و شناسه ردیف شکسته‌شده است.
+// Integrity آخرین نتیجه بررسی زنجیره و یافته‌های باز را برمی‌گرداند.
+// ctx لغو درخواست است. خروجی زمان بررسی، نتیجه، شناسه ردیف شکسته‌شده و فهرست نوع و نام است.
 // FAU_STG.2: هش زنجیره در این پاسخ نیست.
 func (s *Service) Integrity(ctx context.Context) (IntegrityResponse, error) {
 	if ctx != nil {
@@ -83,12 +94,45 @@ func (s *Service) Integrity(ctx context.Context) (IntegrityResponse, error) {
 	if err != nil {
 		return IntegrityResponse{}, apperror.New("DB_ERROR", "خطا در خواندن وضعیت ممیزی.", err.Error(), 500)
 	}
-	resp := IntegrityResponse{LastResult: state.LastResult, BrokenAtID: state.BrokenAtID}
+	rows, err := s.openFindings(ctx)
+	if err != nil {
+		return IntegrityResponse{}, apperror.New("DB_ERROR", "خطا در خواندن وضعیت ممیزی.", err.Error(), 500)
+	}
+	return chainIntegrity(state, rows), nil
+}
+
+// openFindings یافته‌های باز را می‌خواند.
+// ctx لغو درخواست است. اگر مخزن نباشد خروجی خالی است تا پاسخ زنجیره بدون پایگاه بماند.
+func (s *Service) openFindings(ctx context.Context) ([]audit.IntegrityFinding, error) {
+	if s.findings == nil {
+		return []audit.IntegrityFinding{}, nil
+	}
+	return s.findings.ListAllOpen(ctx)
+}
+
+// chainIntegrity وضعیت زنجیره و یافته‌ها را به پاسخ API تبدیل می‌کند.
+// state ردیف AuditChainStates و rows یافته‌های باز است. خروجی هش ندارد.
+func chainIntegrity(state audit.AuditChainState, rows []audit.IntegrityFinding) IntegrityResponse {
+	items := make([]OpenFindingItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, OpenFindingItem{
+			EntityType:      row.EntityType,
+			EntityTypeLabel: audit.TargetTypeLabel(row.EntityType),
+			EntityName:      row.EntityName,
+			FirstSeenAt:     row.FirstSeenAt.UTC(),
+		})
+	}
+	resp := IntegrityResponse{
+		LastResult:        state.LastResult,
+		BrokenAtID:        state.BrokenAtID,
+		OpenFindingsCount: len(items),
+		OpenFindings:      items,
+	}
 	if !state.LastCheckAt.IsZero() {
 		at := state.LastCheckAt.UTC()
 		resp.LastCheckAt = &at
 	}
-	return resp, nil
+	return resp
 }
 
 // toItem یک ردیف اسکن‌شده را به پاسخ API تبدیل می‌کند.

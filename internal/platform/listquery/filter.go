@@ -70,9 +70,13 @@ func columnValue(raw string, col Column) string {
 	return strings.TrimSpace(raw)
 }
 
+// maxEnumFilterValues سقف مقدارهای یک فیلتر انتخابی است.
+// SQL Server در یک دستور بیش از ۲۱۰۰ پارامتر نمی‌پذیرد و ۵۰ مقدار برای یک ستون جا می‌گذارد.
+const maxEnumFilterValues = 50
+
 // buildEnum شرط IN را از مقدارهای جداشده با ویرگول می‌سازد.
 // name نام ستون، value متن trim‌شده و col عبارت SQL سرور است.
-// جزء خالی بین ویرگول‌ها خطا است. هر جزء یک پارامتر جداست.
+// جزء خالی بین ویرگول‌ها خطا است. بیش از ۵۰ مقدار هم رد می‌شود. هر جزء یک پارامتر جداست.
 func buildEnum(name, value string, col Column) (*filterClause, string, string, error) {
 	parts := strings.Split(value, ",")
 	args := make([]any, 0, len(parts))
@@ -84,6 +88,9 @@ func buildEnum(name, value string, col Column) (*filterClause, string, string, e
 		}
 		args = append(args, part)
 		clean = append(clean, part)
+	}
+	if len(args) > maxEnumFilterValues {
+		return nil, "", "", apperror.ErrValidation
 	}
 	marks := strings.TrimRight(strings.Repeat("?,", len(args)), ",")
 	return &filterClause{sql: col.Expr + " IN (" + marks + ")", args: args}, name, strings.Join(clean, ","), nil

@@ -63,7 +63,9 @@ func (fakeSessions) GetSessionsByUserID(int) ([]session.Session, error) { return
 
 type stubRepo struct {
 	user      *User
+	users     []User
 	role      *Role
+	roles     []Role
 	rolePerms []Permission
 	byID      map[int]Permission
 	missing   bool
@@ -100,8 +102,13 @@ func (r *stubRepo) Update(user *User) error {
 	r.user = &cp
 	return nil
 }
-func (r *stubRepo) Delete(int) error                      { return nil }
-func (r *stubRepo) FindAll() ([]User, error)              { return nil, nil }
+func (r *stubRepo) Delete(int) error { return nil }
+func (r *stubRepo) FindAll() ([]User, error) {
+	if r.users != nil {
+		return append([]User(nil), r.users...), nil
+	}
+	return nil, nil
+}
 func (r *stubRepo) CountUsersByRoleID(int) (int64, error) { return 0, nil }
 func (r *stubRepo) FindDoctors() ([]User, error)          { return nil, nil }
 func (r *stubRepo) FindAssistants() ([]User, error)       { return nil, nil }
@@ -125,7 +132,12 @@ func (r *stubRepo) FindRoleByName(name string) (*Role, error) {
 	}
 	return nil, gorm.ErrRecordNotFound
 }
-func (r *stubRepo) FindAllRoles() ([]Role, error) { return nil, nil }
+func (r *stubRepo) FindAllRoles() ([]Role, error) {
+	if r.roles != nil {
+		return append([]Role(nil), r.roles...), nil
+	}
+	return nil, nil
+}
 func (r *stubRepo) UpdateRole(role *Role) error {
 	cp := *role
 	r.role = &cp

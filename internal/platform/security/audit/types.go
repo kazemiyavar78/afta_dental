@@ -65,6 +65,7 @@ const (
 	EventAuditRead         = "AUDIT_READ"
 	EventAuditReadDenied   = "AUDIT_READ_DENIED"
 	EventAuditChainBroken  = "AUDIT_CHAIN_BROKEN"
+	EventIntegrityRestored = "INTEGRITY_RESTORED"
 	EventEntityCreated     = "ENTITY_CREATED"
 	EventEntityUpdated     = "ENTITY_UPDATED"
 	EventEntityDeleted     = "ENTITY_DELETED"
@@ -139,6 +140,7 @@ var eventCatalog = map[string]EventSpec{
 	EventAuditRead:             {Label: "خواندن ممیزی", Severity: SeverityNormal},
 	EventAuditReadDenied:       {Label: "رد خواندن ممیزی", Severity: SeverityHigh},
 	EventAuditChainBroken:      {Label: "شکست زنجیره ممیزی", Severity: SeverityCritical},
+	EventIntegrityRestored:     {Label: "رفع نقض یکپارچگی", Severity: SeverityHigh},
 	EventEntityCreated:         {Label: "ایجاد رکورد", Severity: SeverityNormal},
 	EventEntityUpdated:         {Label: "به‌روزرسانی رکورد", Severity: SeverityNormal},
 	EventEntityDeleted:         {Label: "حذف رکورد", Severity: SeverityNormal},
@@ -209,6 +211,18 @@ func EventLabel(eventType string) string {
 		return eventType
 	}
 	return spec.Label
+}
+
+// TargetTypeLabel برچسب فارسی نوع هدف را برمی‌گرداند.
+// code مقدار TargetType یا EntityType است. کد ناشناخته همان رشته ورودی است.
+func TargetTypeLabel(code string) string {
+	if code == "" {
+		return ""
+	}
+	if label, ok := targetLabels[code]; ok {
+		return label
+	}
+	return code
 }
 
 // ReasonLabel برچسب فارسی کد دلیل را برمی‌گرداند.

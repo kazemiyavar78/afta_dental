@@ -1,13 +1,18 @@
-import { Alert, Card, Spin } from 'antd';
+import { useState } from 'react';
+import { Alert, Button, Card, Flex, List, Modal, Spin } from 'antd';
 import { formatDateTime } from '@/platform/reports/formatters/date';
 import { useLogIntegrity } from '../hooks';
+import type { OpenIntegrityFinding } from '../types';
 
 /**
- * کارت وضعیت صحت لاگ‌ها را از نتیجه آخرین بررسی زنجیره نشان می‌دهد.
+ * کارت وضعیت صحت لاگ‌ها را از نتیجه آخرین بررسی زنجیره و یافته‌های باز نشان می‌دهد.
  * سالم سبز است و زمان بررسی را دارد. خراب قرمز است و شناسه اولین ردیف خراب را دارد.
+ * دکمه تعداد یافته‌های باز را نشان می‌دهد و با کلیک فهرست نوع، نام و اولین زمان را باز می‌کند.
  */
 export function IntegrityCard() {
   const { data, isLoading, isError } = useLogIntegrity();
+  const [open, setOpen] = useState(false);
+  const findings = data?.open_findings ?? [];
 
   let body = <Alert type="info" showIcon message="هنوز بررسی نشده" />;
   if (isLoading) body = <Spin />;
@@ -20,5 +25,48 @@ export function IntegrityCard() {
     body = <Alert type="success" showIcon message="سالم" description={`آخرین بررسی: ${when}`} />;
   }
 
-  return <Card title="وضعیت صحت لاگ‌ها">{body}</Card>;
+  return (
+    <Card title="وضعیت صحت لاگ‌ها">
+      <Flex vertical gap="small" align="stretch">
+        {body}
+        {data ? (
+          <Button type="link" onClick={() => setOpen(true)}>
+            {`یافته‌های باز: ${data.open_findings_count ?? 0}`}
+          </Button>
+        ) : null}
+      </Flex>
+      <Modal
+        title="یافته‌های باز یکپارچگی"
+        open={open}
+        onCancel={() => setOpen(false)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setOpen(false)}>
+            بستن
+          </Button>,
+        ]}
+      >
+        <FindingList findings={findings} />
+      </Modal>
+    </Card>
+  );
+}
+
+/**
+ * فهرست یافته‌های باز را نشان می‌دهد.
+ * @param findings ردیف‌های باز برگشتی از سرور
+ */
+function FindingList({ findings }: { findings: OpenIntegrityFinding[] }) {
+  if (findings.length === 0) {
+    return <Alert type="info" showIcon message="یافته بازی نیست" />;
+  }
+  return (
+    <List
+      dataSource={findings}
+      renderItem={(item) => (
+        <List.Item>
+          {`${item.entity_type_label || item.entity_type}، ${item.entity_name}، ${formatDateTime(item.first_seen_at)}`}
+        </List.Item>
+      )}
+    />
+  );
 }

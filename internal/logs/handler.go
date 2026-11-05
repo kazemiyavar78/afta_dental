@@ -94,8 +94,8 @@ func (h *Handler) Meta(c *gin.Context) {
 	c.JSON(http.StatusOK, meta)
 }
 
-// Integrity نتیجه آخرین بررسی زنجیره را برمی‌گرداند.
-// مجوز مسیر logs.read است. FAU_STG.2: نمایش نتیجه بررسی، نه خود هش.
+// Integrity نتیجه آخرین بررسی زنجیره و یافته‌های باز را برمی‌گرداند.
+// مجوز مسیر logs.read است. FAU_STG.2: نمایش نتیجه بررسی و تعداد یافته، نه خود هش.
 func (h *Handler) Integrity(c *gin.Context) {
 	status, err := h.api.Integrity(c.Request.Context())
 	if err != nil {

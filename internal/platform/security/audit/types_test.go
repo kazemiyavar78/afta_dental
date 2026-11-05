@@ -9,7 +9,7 @@ func TestEventCatalog_KnownTypesHaveLabel(t *testing.T) {
 		EventIPLocked, EventAccountLocked, EventUserCreated, EventUserUpdated,
 		EventPasswordChanged, EventRoleCreated, EventRoleUpdated, EventRoleDeleted,
 		EventSettingChanged, EventSettingRemoved, EventAuditStarted, EventAuditStopped,
-		EventAuditRead, EventAuditReadDenied, EventAuditChainBroken, EventEntityCreated,
+		EventAuditRead, EventAuditReadDenied, EventAuditChainBroken, EventIntegrityRestored, EventEntityCreated,
 		EventEntityUpdated, EventEntityDeleted, EventEntityRestored, EventUpload,
 	}
 	deprecated := []string{

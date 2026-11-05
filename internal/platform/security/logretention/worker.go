@@ -36,10 +36,11 @@ type Worker struct {
 	integritySvc IntegrityChecker
 }
 
-// IntegrityChecker اینترفیس بررسی یکپارچگی جداول.
+// IntegrityChecker فهرست ردیف‌های کاربر و نقش است که HMAC نمی‌خورند.
+// پیاده‌سازی رویداد نمی‌سازد. ثبت یافته در audit.ApplyIntegrityFindings است.
 type IntegrityChecker interface {
-	VerifyAllUsers(ip string) (bool, error)
-	VerifyAllRoles(ip string) (bool, error)
+	InvalidUsers() ([]audit.IntegritySubject, error)
+	InvalidRoles() ([]audit.IntegritySubject, error)
 }
 
 // NewWorker نمونه Worker می‌سازد.
@@ -64,16 +65,30 @@ func NewWorker(
 }
 
 // Start کارگر پس‌زمینه را اجرا می‌کند.
+// دور اول همان لحظه اجرا می‌شود تا AuditChainStates و وضعیت صحت از ابتدا پر باشند.
+// دورهای بعد به فاصله ticker هستند. لغو ctx حلقه را بعد از دور جاری متوقف می‌کند.
 func (w *Worker) Start(ctx context.Context) {
-	t := time.NewTicker(w.ticker)
-	defer t.Stop()
+	ticker := time.NewTicker(w.ticker)
+	defer ticker.Stop()
+	runCycles(ctx, ticker.C, w.runCycle)
+}
 
+// runCycles یک دور را بلافاصله و بعد با هر تیک اجرا می‌کند.
+// ctx لغو حلقه است. ticks کانال تیک است. cycle همان کار یک دور است و خروجی ندارد.
+func runCycles(ctx context.Context, ticks <-chan time.Time, cycle func()) {
+	if ctx.Err() != nil {
+		return
+	}
+	cycle()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-			w.runCycle()
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
+			cycle()
 		}
 	}
 }
@@ -180,24 +195,30 @@ func (w *Worker) cleanupLoginAttempts() {
 	}
 }
 
+// verifyIntegrity کاربر، نقش و تنظیم را تا آخر بررسی می‌کند و یافته تکراری نمی‌سازد.
+// خطا فقط در لاگ سرور می‌ماند. شکست یک نوع، نوع‌های دیگر را حذف نمی‌کند.
+// FDP_SDI.2: هشدار تازه فقط برای ردیفی است که قبلاً یافته باز نداشته.
 func (w *Worker) verifyIntegrity() {
-	if w.integritySvc == nil {
+	if w.integritySvc == nil || w.db == nil || w.audit == nil || w.settings == nil {
 		return
 	}
+	store := audit.NewFindingStore(w.db)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	w.applyScan(store, now, audit.TargetSetting, w.settings.InvalidSettings)
+	w.applyScan(store, now, audit.TargetUser, w.integritySvc.InvalidUsers)
+	w.applyScan(store, now, audit.TargetRole, w.integritySvc.InvalidRoles)
+}
 
-	ok, err := w.settings.VerifyAllIntegrity("system")
-	if err != nil || !ok {
-		log.Printf("شکست یکپارچگی SecuritySettings")
+// applyScan یک نوع را تا آخر می‌خواند و یافته‌ها را با تابع مشترک هم‌تراز می‌کند.
+// list فقط ردیف‌های نامعتبر را می‌دهد. خطای خواندن همان نوع را رد می‌کند تا یافته باز بسته نشود.
+func (w *Worker) applyScan(store audit.FindingStore, now time.Time, entityType string, list func() ([]audit.IntegritySubject, error)) {
+	rows, err := list()
+	if err != nil {
+		log.Printf("خطا در بررسی یکپارچگی %s: %v", entityType, err)
+		return
 	}
-
-	ok, err = w.integritySvc.VerifyAllUsers("system")
-	if err != nil || !ok {
-		log.Printf("شکست یکپارچگی Users")
-	}
-
-	ok, err = w.integritySvc.VerifyAllRoles("system")
-	if err != nil || !ok {
-		log.Printf("شکست یکپارچگی Roles")
+	if err := audit.ApplyIntegrityFindings(context.Background(), store, w.audit, entityType, rows, now); err != nil {
+		log.Printf("خطا در ثبت یافته یکپارچگی %s: %v", entityType, err)
 	}
 }
 

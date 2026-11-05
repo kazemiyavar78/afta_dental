@@ -13,7 +13,7 @@ export function useLogMeta() {
 }
 
 /**
- * وضعیت صحت زنجیره را با React Query می‌خواند.
+ * وضعیت صحت زنجیره و یافته‌های باز را با React Query می‌خواند.
  * @returns نتیجه query برای کارت بالای صفحه لاگ
  */
 export function useLogIntegrity() {

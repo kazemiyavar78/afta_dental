@@ -1,6 +1,7 @@
 package listquery
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -123,6 +124,37 @@ func TestListQuery_TrimBeforeTextFilter(t *testing.T) {
 	if len(vars) == 0 || vars[0] != "%192.168.1%" {
 		t.Fatalf("IP باید بدون فاصله در الگو باشد: %#v", vars)
 	}
+}
+
+// TestListQuery_TextLikeEscapesBracket کروشه باز را در LIKE به کلاس حرفی تبدیل می‌کند.
+// در SQL Server نویسه [ با ESCAPE بی‌اثر نمی‌شود و شکل لفظی‌اش [[] است.
+func TestListQuery_TextLikeEscapesBracket(t *testing.T) {
+	q := mustParseValues(t, url.Values{"filter[name]": {"a[b"}})
+	_, vars := drySQL(t, q)
+	if len(vars) == 0 || vars[0] != `%a[[]b%` {
+		t.Fatalf("کروشه باید لفظی شود: %#v", vars)
+	}
+}
+
+// TestListQuery_EnumRejectsMoreThan50Values بیش از ۵۰ مقدار انتخابی را رد می‌کند.
+// سقف جلوی رسیدن یک فیلتر به حد ۲۱۰۰ پارامتر SQL Server را می‌گیرد.
+func TestListQuery_EnumRejectsMoreThan50Values(t *testing.T) {
+	reject(t, "filter[code]="+enumValues(maxEnumFilterValues+1))
+	q := mustParse(t, "filter[code]="+enumValues(maxEnumFilterValues))
+	_, vars := drySQL(t, q)
+	if len(vars) != maxEnumFilterValues {
+		t.Fatalf("پنجاه مقدار باید پذیرفته شود: %d", len(vars))
+	}
+}
+
+// enumValues به تعداد n مقدار جداشده با ویرگول می‌سازد.
+// n تعداد مقدار است. خروجی برای فیلتر enum تست است.
+func enumValues(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("v%d", i)
+	}
+	return strings.Join(parts, ",")
 }
 
 // TestListQuery_EnumInMultipleValues چند مقدار enum را به IN پارامتری تبدیل می‌کند.

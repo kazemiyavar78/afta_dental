@@ -34,6 +34,18 @@ func (s *Service) recordIntegrity(ctx context.Context, actor audit.Actor, target
 	})
 }
 
+// subjectUser ردیف نامعتبر کاربر را برای یافته یکپارچگی می‌سازد.
+// u کاربر ذخیره‌شده است. خروجی نوع user و نام کاربری را دارد و رویداد نمی‌سازد.
+func subjectUser(u User) audit.IntegritySubject {
+	return audit.IntegritySubject{EntityType: audit.TargetUser, EntityID: strconv.Itoa(u.ID), EntityName: u.Username}
+}
+
+// subjectRole ردیف نامعتبر نقش را برای یافته یکپارچگی می‌سازد.
+// role نقش ذخیره‌شده است. خروجی نوع role و نام نقش است.
+func subjectRole(role Role) audit.IntegritySubject {
+	return audit.IntegritySubject{EntityType: audit.TargetRole, EntityID: strconv.Itoa(role.ID), EntityName: role.Name}
+}
+
 // userTarget هدف رویداد کاربر را از روی شناسه و نام کاربری می‌سازد.
 // id شناسه کاربر و username نام اوست. خروجی Target با نوع user است.
 func userTarget(id int, username string) audit.Target {

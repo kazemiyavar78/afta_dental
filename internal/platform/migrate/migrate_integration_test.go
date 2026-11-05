@@ -67,6 +67,7 @@ func productionModels() []interface{} {
 		&session.Session{},
 		&audit.SecurityEvent{},
 		&audit.AuditChainState{},
+		&audit.IntegrityFinding{},
 		&user.Role{},
 		&user.Permission{},
 		&user.RolePermission{},
@@ -95,6 +96,67 @@ func TestIntegration_LogCleanupAndUploadCounterTablesExist(t *testing.T) {
 			t.Fatalf("بعد از Migrate این جدول‌ها در INFORMATION_SCHEMA نیستند: %s", strings.Join(missing, ", "))
 		}
 	})
+}
+
+// TestIntegration_IntegrityFindingsTableExists جدول یافته و ستون ResolvedAt تهی‌پذیر را بعد از Migrate می‌سنجد.
+// tx تراکنش تست است و در پایان rollback می‌شود. نبودن جدول یا ستون تست را شکست می‌دهد.
+func TestIntegration_IntegrityFindingsTableExists(t *testing.T) {
+	testutil.WithTestTx(t, func(tx *gorm.DB) {
+		if err := Migrate(tx, []interface{}{&audit.IntegrityFinding{}}); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		missing := missingSchemaTables(t, tx, []string{"IntegrityFindings"})
+		if len(missing) > 0 {
+			t.Fatalf("جدول IntegrityFindings ساخته نشد")
+		}
+		required := []string{"EntityType", "EntityID", "EntityName", "FirstSeenAt", "LastSeenAt", "ResolvedAt"}
+		absent := missingFindingColumns(t, tx, required)
+		if len(absent) > 0 {
+			t.Fatalf("ستون‌های IntegrityFindings نیستند یا تهی‌پذیری ResolvedAt نادرست است: %s", strings.Join(absent, ", "))
+		}
+	})
+}
+
+// missingFindingColumns ستون‌هایی را برمی‌گرداند که نیستند یا ResolvedAt تهی‌پذیر نیست.
+// db تراکنش تست است و names ستون‌های مورد انتظارند. بقیه ستون‌ها باید NOT NULL باشند.
+func missingFindingColumns(t *testing.T, db *gorm.DB, names []string) []string {
+	t.Helper()
+	placeholders := make([]string, len(names))
+	args := make([]interface{}, 0, len(names)+1)
+	args = append(args, "IntegrityFindings")
+	for i, name := range names {
+		placeholders[i] = "?"
+		args = append(args, name)
+	}
+	query := fmt.Sprintf(`
+		SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = ? AND COLUMN_NAME IN (%s)
+	`, strings.Join(placeholders, ", "))
+	var found []schemaColumnRow
+	if err := db.Raw(query, args...).Scan(&found).Error; err != nil {
+		t.Fatalf("خواندن ستون‌ها: %v", err)
+	}
+	byName := make(map[string]schemaColumnRow, len(found))
+	for _, row := range found {
+		byName[row.ColumnName] = row
+	}
+	var missing []string
+	for _, name := range names {
+		row, ok := byName[name]
+		if !ok {
+			missing = append(missing, name)
+			continue
+		}
+		wantNull := "NO"
+		if name == "ResolvedAt" {
+			wantNull = "YES"
+		}
+		if !strings.EqualFold(row.IsNullable, wantNull) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 // TestIntegration_SecurityEventNewColumnsExist ستون‌های فاعل، هدف و نسخه هش را بعد از Migrate می‌سنجد.

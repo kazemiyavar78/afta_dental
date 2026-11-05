@@ -11,11 +11,21 @@ export type LogMeta = {
   target_types: LogOption[];
 };
 
-/** وضعیت صحت زنجیره. last_result برابر ok یا broken است. */
+/** یک یافته باز یکپارچگی. نوع، نام و اولین زمان برای نمایش در کارت است. */
+export type OpenIntegrityFinding = {
+  entity_type: string;
+  entity_type_label: string;
+  entity_name: string;
+  first_seen_at: string;
+};
+
+/** وضعیت صحت زنجیره و یافته‌های باز. last_result برابر ok یا broken است. */
 export type LogIntegrity = {
   last_check_at: string | null;
   last_result: string;
   broken_at_id: number;
+  open_findings_count: number;
+  open_findings: OpenIntegrityFinding[];
 };
 
 /** جزئیات ماسک‌شده یک رویداد. شیء است، نه متن JSON. */
