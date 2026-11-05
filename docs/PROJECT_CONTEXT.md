@@ -16,7 +16,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 **Backend**
 
-- Go `1.26.4` (`go.mod`). README still says Go 1.22+.
+- Go `1.26.4` (`go.mod`). README names the same version.
 - HTTP: `github.com/gin-gonic/gin` v1.10.0
 - DB driver: `gorm.io/driver/sqlserver` v1.5.4 (indirect), `github.com/microsoft/go-mssqldb` v1.7.2 (indirect)
 - ORM: `gorm.io/gorm` v1.25.12
@@ -79,7 +79,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/regulation` — service-interval rules and required photos.
 - `internal/report` — SQL report queries.
 - `internal/logs` — security-event list API. The root `.gitignore` and `frontend/.gitignore` use `/logs/` so only a `logs` directory next to that file is ignored. `*.log` still ignores log files. `internal/logs` and `frontend/src/modules/logs` are source and are tracked (D-10).
-- `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs.
+- `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs. AFTA working docs: `docs/afta/roadmap.md`, `docs/afta/traceability.md`, `docs/afta/settings.md`, `docs/afta/user-guide.md`, `docs/afta/install-guide.md`, `docs/afta/discovery-phase0-1.md`.
 - `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
 - `scripts/afta-discovery.ps1` — discovery run. Masking and DSN conversion come from `scripts/lib/redact.ps1` and `scripts/lib/db.ps1`. A null SQL parameter is sent as `DBNull`. A query result is returned as one `DataTable` so PowerShell does not unroll the rows.
 - `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
@@ -413,7 +413,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 
 - D-01 is done pending the consultant. `docs/afta/check-output/discovery-20261105-2123.txt` (section Q6) lists `LogCleanupSummaries` and `UploadCounters` on the development database. `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` remain integration tests and are not part of `go test ./...`.
 - `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
-- README is behind the code on Go version (docs say 1.22+, `go.mod` is 1.26.4), sample-only wording for reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
+- Root `.env.example` is not in the repository. README lists environment variable names and purpose only. `frontend/.env.example` documents `VITE_API_BASE_URL`.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
 - `fund.update`, `fund.delete`, and `tariff.delete` permissions have no routes.

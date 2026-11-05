@@ -4,11 +4,13 @@
 
 بک‌اند سیستم پذیرش کلینیک دندان‌پزشکی با رعایت الزامات امنیتی **افتا**.
 
+Cursor را مستقیم روی پوشه `afta_tpdenta` باز کنید تا `.cursor/rules` بار شود.
+
 ## استک تکنولوژی
 
 | مؤلفه | انتخاب |
 |---|---|
-| زبان | Go 1.22+ |
+| زبان | Go 1.26.4 (`go.mod`) |
 | HTTP Framework | Gin |
 | پایگاه داده | SQL Server |
 | ORM | `gorm.io/gorm` + `gorm.io/driver/sqlserver` |
@@ -22,20 +24,23 @@
 ## ساختار پروژه
 
 ```
-cmd/server/          ← نقطه ورود
-internal/
-  platform/          ← زیرساخت مشترک (config, db, middleware, security)
-  user/              ← ماژول کاربران (کامل)
-  reception/         ← نمونه
-  organization/      ← نمونه
-  fund/              ← نمونه
-  tariff/            ← نمونه
-docs/                ← مستندات استقرار و چک‌لیست افتا
+cmd/server/                 نقطه ورود API
+cmd/seed-admin/             ساخت کاربر Admin اولیه
+internal/platform/          زیرساخت (config, db, middleware, security)
+internal/user/              کاربران، نقش، مجوز
+internal/reception/         پذیرش
+internal/organization/      سازمان و بیمه‌گر
+internal/fund/              صندوق
+internal/tariff/            تعرفه
+internal/logs/              فهرست رویداد امنیتی
+frontend/                   رابط React
+docs/                       بافت پروژه، افتا، استقرار IIS
+scripts/afta-check.ps1      بررسی واحد، integration، فرانت و SQL خواندنی
 ```
 
 ## پیش‌نیازها
 
-- Go 1.22+
+- Go 1.26.4
 - Node.js 22.17.0 (فایل `.nvmrc` و فیلد `engines` در `frontend/package.json`)
 - SQL Server 2019+
 
@@ -43,16 +48,30 @@ docs/                ← مستندات استقرار و چک‌لیست افت
 
 ### ۱. کلون و تنظیم env
 
-```bash
-cp .env.example .env
-# مقادیر DATABASE_URL و کلیدهای امنیتی را ویرایش کنید
-```
+فایل `.env` را در ریشه مخزن بسازید. این فایل commit نمی‌شود. در مخزن `.env.example` ریشه وجود ندارد. `frontend/.env.example` فقط نام `VITE_API_BASE_URL` را دارد. مقدار هیچ متغیری را در مخزن ننویسید.
 
-**مهم:** هر کلید امنیتی باید جدا و یکتا باشد:
-- `AES_KEY` — دقیقاً ۳۲ بایت
-- `INTEGRITY_HMAC_KEY`
-- `AUDIT_HMAC_KEY`
-- `CSRF_HMAC_KEY`
+| نام | کاربرد |
+|---|---|
+| `DATABASE_URL` | نشانی SQL Server برای GORM. الزامی. |
+| `AES_KEY` | کلید AES-256-GCM. الزامی. طول ۳۲ بایت. جدا از کلیدهای HMAC. |
+| `INTEGRITY_HMAC_KEY` | کلید HMAC صحت ردیف. الزامی. جدا از AES. |
+| `AUDIT_HMAC_KEY` | کلید HMAC زنجیره رویداد امنیتی. الزامی. |
+| `CSRF_HMAC_KEY` | کلید صدور توکن CSRF. الزامی. |
+| `SERVER_HOST` | میزبان bind. اگر نباشد کد `0.0.0.0` می‌گذارد. |
+| `SERVER_PORT` | درگاه bind. اگر نباشد کد `8080` می‌گذارد. |
+| `APP_ENV` | `development` حالت توسعه (فقط API و Gin debug). مقدار دیگر، از جمله پیش‌فرض کد `production`، پوشه `frontend/dist` را سرو می‌کند. |
+| `DEV_MODE` | `true` حالت توسعه را اجبار می‌کند. |
+| `SECURE_COOKIES` | پرچم Secure کوکی نشست و CSRF. پیش‌فرض کد روشن است. |
+| `ALLOWED_ORIGINS` | مبدأهای CORS، جداشده با ویرگول. |
+| `RATE_LIMIT_PER_MINUTE` | سقف درخواست سراسری. پیش‌فرض کد ۱۲۰. |
+| `LOGIN_RATE_LIMIT_PER_MINUTE` | در config خوانده می‌شود. محدودیت ورود علاوه بر آن از `loginguard` و `MaximumNumberOfFailedLogin` می‌آید. |
+| `LOG_RETENTION_TICKER` | فاصله worker پاک‌سازی لاگ و صحت. مدت Go. پیش‌فرض کد `15m`. |
+| `INTEGRITY_TICKER` | در config خوانده می‌شود. worker فقط `LOG_RETENTION_TICKER` را به کار می‌برد. |
+| `SEED_ADMIN_USERNAME` | نام کاربر Admin در `cmd/seed-admin`. اگر نباشد کد نام جایگزین دارد. |
+| `SEED_ADMIN_PASSWORD` | رمز همان کاربر. اگر نباشد کد رمز جایگزین دارد. در مخزن و لاگ نیاید. |
+| `AFTA_TEST_DATABASE_URL` | نشانی SQL Server برای تست integration و `scripts/afta-check.ps1`. سرور آن را نمی‌خواند. |
+| `VITE_API_BASE_URL` | پایه axios در فرانت. |
+| `VITE_API_PROXY_TARGET` | مقصد پروکسی `/api` در سرور توسعه Vite. اگر نباشد کد `http://127.0.0.1:8080` می‌گذارد. |
 
 ### ۲. ایجاد دیتابیس
 
@@ -76,9 +95,18 @@ go run ./cmd/server
 
 ```bash
 go run ./cmd/seed-admin
-# یا با متغیرهای سفارشی:
-# SEED_ADMIN_USERNAME=admin SEED_ADMIN_PASSWORD=Admin@1234 go run ./cmd/seed-admin
 ```
+
+نام و رمز از `SEED_ADMIN_USERNAME` و `SEED_ADMIN_PASSWORD` می‌آیند. اگر خالی باشند، خود دستور مقدار جایگزین کد را به کار می‌برد. اول یک بار سرور را اجرا کنید تا مجوزها ساخته شوند؛ seed بدون آن‌ها به خطا می‌خورد.
+
+فرانت، از پوشه `frontend`:
+
+```bash
+npm install
+npm run dev
+```
+
+سرور توسعه Vite روی درگاه ۵۱۷۳ است و `/api` را به بک‌اند پروکسی می‌کند. ساخت بسته تولید: `npm run build`.
 
 > پس از `SeedDefaults`، تنظیمات امنیتی پیش‌فرض خودکار درج می‌شوند. لیست کامل در بخش [تنظیمات پیش‌فرض](#تنظیمات-پیش‌فرض-securitysettings) آمده است.
 
@@ -163,7 +191,7 @@ go run ./cmd/seed-admin
 go test ./...
 ```
 
-تست integration (اگر `AFTA_TEST_DATABASE_URL` خالی باشد رد می‌شود):
+تست integration. فایل‌های دارای `//go:build integration` داخل `go test ./...` نیستند. اگر `AFTA_TEST_DATABASE_URL` خالی باشد، `OpenTestDB` همان تست را `t.Skip` می‌کند. `WithTestTx` بدنه را در یک تراکنش اجرا می‌کند و در پایان، حتی اگر تست شکست بخورد، rollback می‌کند.
 
 ```bash
 go test -tags integration ./...
