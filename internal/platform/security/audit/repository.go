@@ -1,11 +1,15 @@
 package audit
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// errNilAuditTx یعنی RecordTx بدون تراکنش باز صدا زده شده است.
+var errNilAuditTx = errors.New("تراکنش ممیزی خالی است")
 
 // errNilChainState یعنی ذخیره‌سازی وضعیت بدون ردیف صدا زده شده است.
 var errNilChainState = errors.New("وضعیت زنجیره خالی است")
@@ -25,16 +29,48 @@ func NewRepository(db *gorm.DB) Repository {
 // اگر ردیفی نمانده باشد و لنگر پاک‌سازی وجود داشته باشد، همان لنگر هش قبلی است.
 func (r *gormRepository) AppendChained(build func(prevHash string) (*SecurityEvent, error)) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		prevHash, err := lockedPrevHash(tx)
-		if err != nil {
-			return err
-		}
-		event, err := build(prevHash)
-		if err != nil {
-			return err
-		}
-		return tx.Create(event).Error
+		return insertChained(tx, build)
 	})
+}
+
+// AppendChainedCtx مانند AppendChained است ولی context درخواست را به تراکنش می‌دهد.
+// ctx لغو یا مهلت درخواست است. build ردیف را از PrevHash قطعی می‌سازد.
+// اگر ctx تمام شده باشد درج شروع نمی‌شود.
+func (r *gormRepository) AppendChainedCtx(ctx context.Context, build func(prevHash string) (*SecurityEvent, error)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return insertChained(tx, build)
+	})
+}
+
+// AppendInTx رویداد را در تراکنش داده‌شده درج می‌کند و تراکنش تازه باز نمی‌کند.
+// tx تراکنش عملیات تغییردهنده است. build ردیف آماده را از PrevHash می‌سازد.
+// tx تهی خطا می‌دهد تا ثبت بیرون از تراکنش، خاموش و بدون زنجیره انجام نشود.
+// FAU_STG.4: شکست درج به صدازننده برمی‌گردد تا کل عملیات برگردد.
+func (r *gormRepository) AppendInTx(tx *gorm.DB, build func(prevHash string) (*SecurityEvent, error)) error {
+	if tx == nil {
+		return errNilAuditTx
+	}
+	return insertChained(tx, build)
+}
+
+// insertChained آخرین هش را قفل می‌کند و ردیف را در همان اتصال درج می‌کند.
+// tx تراکنش باز است. build نباید خودش رویداد دیگری ثبت کند.
+func insertChained(tx *gorm.DB, build func(prevHash string) (*SecurityEvent, error)) error {
+	prevHash, err := lockedPrevHash(tx)
+	if err != nil {
+		return err
+	}
+	event, err := build(prevHash)
+	if err != nil {
+		return err
+	}
+	return tx.Create(event).Error
 }
 
 // lockedPrevHash ردیف وضعیت و سپس آخرین رویداد را با UPDLOCK, HOLDLOCK قفل می‌کند.

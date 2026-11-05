@@ -1,11 +1,6 @@
 package audit
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,50 +23,28 @@ func NewManager(db *gorm.DB, auditKey string) *Manager {
 	}
 }
 
-// computeRowHash هش یک ردیف را از هش قبلی و فیلدهای رویداد می‌سازد.
-// prevHash هش ردیف قبل است. userID می‌تواند nil باشد. createdAt باید همان زمانی باشد که ذخیره می‌شود.
-// خروجی HMAC-SHA256 هگز است. زمان با UTC و RFC3339Nano وارد رشته می‌شود.
-func (m *Manager) computeRowHash(prevHash string, userID *int, ip, eventType, description string, createdAt time.Time) string {
-	uid := ""
-	if userID != nil {
-		uid = strconv.Itoa(*userID)
-	}
-	payload := strings.Join([]string{
-		prevHash,
-		uid,
-		ip,
-		eventType,
-		description,
-		createdAt.UTC().Format(time.RFC3339Nano),
-	}, "|")
-
-	mac := hmac.New(sha256.New, m.auditKey)
-	mac.Write([]byte(payload))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// LogEvent یک رویداد را به انتهای زنجیره اضافه می‌کند.
+// LogEvent مسیر ثبت قدیمی است و تا مهاجرت فراخوانی‌ها در گام ۱-۳ و ۱-۴ می‌ماند.
 // userID فاعل است و اگر nil باشد بخش کاربر هش خالی می‌ماند. ip، eventType و description فیلدهای ردیف‌اند.
-// خطا یعنی درج انجام نشده است. قفل فرایند به‌علاوه UPDLOCK پایگاه جلوی PrevHash تکراری را می‌گیرد.
+// خروجی خطا یعنی درج انجام نشده. ردیف با HashVersion=1 نوشته می‌شود تا فرمول هش قبلی ثابت بماند.
 // FAU_STG.1: دو درخواست همزمان نباید دو ردیف با یک هش قبلی بسازند.
 func (m *Manager) LogEvent(userID *int, ip, eventType, description string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.repo.AppendChained(func(prevHash string) (*SecurityEvent, error) {
 		// datetimeoffset در SQL Server تا ۱۰۰ نانوثانیه ذخیره می‌کند و ساعت لینوکس ریزتر است.
-		// اگر نانوثانیهٔ کامل در هش برود، پس از خواندن ردیف هش نمی‌خواند. دقت ویندوز ۱۰۰ نانوثانیه است و اتفاقاً جور می‌شود.
+		// اگر نانوثانیهٔ کامل در هش برود، پس از خواندن ردیف هش نمی‌خواند.
 		// برش به میکروثانیه هم در Go و هم در SQL Server پایدار است.
-		createdAt := time.Now().UTC().Truncate(time.Microsecond)
-		rowHash := m.computeRowHash(prevHash, userID, ip, eventType, description, createdAt)
-		return &SecurityEvent{
+		row := SecurityEvent{
 			UserID:      userID,
 			Ip:          ip,
 			EventType:   eventType,
 			Description: description,
-			CreatedAt:   createdAt,
+			CreatedAt:   time.Now().UTC().Truncate(time.Microsecond),
 			PrevHash:    prevHash,
-			RowHash:     rowHash,
-		}, nil
+			HashVersion: HashVersionV1,
+		}
+		row.RowHash = m.computeRowHash(row)
+		return &row, nil
 	})
 }
 

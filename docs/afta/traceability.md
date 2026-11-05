@@ -25,14 +25,14 @@
 
 | شناسه | منبع | شرح کوتاه | الزام PP | فاز | فایل‌های کد | تست‌ها | وضعیت | یادداشت |
 |---|---|---|---|---|---|---|---|---|
-| R1-01 | Report1 | در لاگ امنیتی شناسه کاربر خالی یا فقط یک عدد است؛ هر ستون جستجو و مرتب‌سازی سمت سرور می‌خواهد؛ فیلتر IP کار نمی‌کند | FAU_GEN.2، FAU_SAR.3 | ۱ | `internal/logs`، `frontend/src/modules/logs`، جدول کلاینت‌ساید | — | باز | مشاور پرسیده شناسه کاربری همان نام کاربری است یا نه. هم‌پوشان با D-14 و D-16. |
-| R1-02 | Report1 | نقش جدید ساخته شده ولی لاگ نمی‌گوید کدام کاربر آن را ساخته است | FAU_GEN.2، FMT_SMR | ۱ | ایجاد نقش در `internal/user` | — | باز | actor در رویداد ایجاد نقش نیست. |
+| R1-01 | Report1 | در لاگ امنیتی شناسه کاربر خالی یا فقط یک عدد است؛ هر ستون جستجو و مرتب‌سازی سمت سرور می‌خواهد؛ فیلتر IP کار نمی‌کند | FAU_GEN.2، FAU_SAR.3 | ۱ | `internal/platform/security/audit/model.go`، `internal/platform/security/audit/event.go`، `internal/platform/middleware/actor.go`، `internal/logs` | `TestRecord_FullActor`، `TestD14_ActorFromContextWithoutUserIsNil` | در حال انجام | نام کاربری در خود رویداد ذخیره می‌شود. فیلتر و جدول لاگ هنوز مهاجرت نشده (D-16). |
+| R1-02 | Report1 | نقش جدید ساخته شده ولی لاگ نمی‌گوید کدام کاربر آن را ساخته است | FAU_GEN.2، FMT_SMR | ۱ | `internal/platform/security/audit/event.go`، `internal/user` | `TestRecord_FullActor` | در حال انجام | مدل رویداد فاعل و هدف دارد. ایجاد نقش هنوز `LogEvent` قدیمی را صدا می‌زند. |
 | R1-03 | Report1 | هنگام ایجاد کاربر خطا داده می‌شود | FMT_MTD، FIA_PMG | ۳ | `internal/platform/security/passwordpolicy`، تنظیمات رمز | — | باز | تصویر خطا در متن استخراج‌شده از PDF نیامد. نقشه راه: مشاور حداقل طول را ۵۰۰۰ گذاشته و سامانه پذیرفته؛ پیام حداقل طول رفتار سیاست رمز است و ریشه، نبود اعتبارسنجی تنظیم است (R1-09، R1-10). |
 | R1-04 | Report1 | پس از تغییر دسترسی نقش، توضیحات لاگ نمی‌گوید چه دسترسی‌هایی اضافه یا گرفته شده است | FMT_MSA، FMT_SMR | ۱ | به‌روزرسانی نقش | — | باز | diff مجوزها محاسبه نمی‌شود. |
 | R1-05 | Report1 | صفحه نشست‌های کاربران برای همه ستون‌ها جستجو و مرتب‌سازی ندارد | FTA_TAH | ۱ | صفحه نشست‌ها | — | باز | همان محدودیت جدول کلاینت‌ساید. |
 | R1-06 | Report1 | خروج به‌خاطر رسیدن نشست‌های فعال به سقف مجاز، لاگ امنیتی ندارد | FTA_MCS، FDP_ACF.4 | ۱ | مسیر حذف نشست قدیمی | — | باز | |
 | R1-07 | Report1 | لاگ حذف نشست نام کاربری و این‌که چه کسی نشست چه کسی را بسته ندارد؛ خروج با دلیل، رویداد جدا نیست. شناسه نشست لازم نیست | FTA_SSL، FAU_GEN | ۱ | حذف نشست و خروج | — | باز | هر خروج باید دلیل مشخص داشته باشد. |
-| R1-08 | Report1 | در لاگ، `Id=1` بی‌معناست و باید حذف شود؛ نام کاربری اضافه شود | FAU_SAR.2 | ۱ | نمایش رویداد امنیتی | — | باز | به‌جای شناسه عددی، نام کاربری. |
+| R1-08 | Report1 | در لاگ، `Id=1` بی‌معناست و باید حذف شود؛ نام کاربری اضافه شود | FAU_SAR.2 | ۱ | `internal/platform/security/audit/model.go` | `TestRecord_FullActor` | در حال انجام | ستون `ActorUsername` نام لحظه رویداد است. صفحه لاگ هنوز شناسه عددی را نشان می‌دهد. |
 | R1-09 | Report1 | تنظیم بولی فقط True یا False بپذیرد و تنظیم عددی فقط بازه مجاز. مشاور پرسیده این تنظیم چیست و چه می‌کند | FMT_MTD | ۳ | `internal/platform/security/settings` | — | باز | نقشه راه: بیشتر تنظیمات schema ندارند. مقدار `True` با حرف بزرگ اعمال نمی‌شود (D-24). |
 | R1-10 | Report1 | مقدار یک تنظیم باید عددی بین ۸ و ۲۵ باشد | FIA_PMG | ۳ | `Password_MinLength` | — | باز | نقشه راه این تنظیم را حداقل طول رمز می‌داند. در DB توسعه مقدار ۳ است (D-25). |
 | R1-11 | Report1 | تنظیمات نامرتب‌اند؛ برای رمز باید برچسبی مثل «الزام وجود عدد در رمز عبور» باشد | AGD_OPE | ۳ | `SettingsDicFN` در `internal/platform/security/settings/keys.go` | — | باز | |
@@ -56,8 +56,8 @@
 |---|---|---|---|---|---|---|---|---|
 | D-11 | Discovery | `VerifyChain` بعد از checkpoint هش آخرین ردیف را به‌جای ردیف قبلی برمی‌دارد | FAU_STG.1 | ۱ | `internal/platform/security/audit/chain.go`، `internal/platform/security/audit/manager.go` | `TestD11_HealthyChainAdvancesState`، `TestD11_TamperedDescriptionStopsAtPreviousRow`، `TestD11_RepeatCheckDoesNotRepeatTamperEvent`، `TestD11_ConcurrentLogEventKeepsSingleChain`، `TestIntegration_D11_ConcurrentLogAndVerifyChain` | منتظر تست DB | بررسی از `LastVerifiedHash` و دسته‌ای است. هشدار دستکاری فقط برای `BrokenAtID` تازه ثبت می‌شود. |
 | D-12 | Discovery | پاک‌سازی لاگ قدیمی زنجیره هش را از وسط می‌برد | FAU_STG.1 | ۱ | `internal/platform/security/logretention/worker.go`، `internal/platform/security/audit/manager.go` | `TestD12_CleanupPrefixThenVerifyRemaining`، `TestD12_AppendAfterDeletingVerifiedTipUsesAnchor`، `TestD12_ZeroCheckpointUsesAnchorHash` | منتظر تست DB | فقط ردیف‌های `ID <= LastVerifiedID` حذف می‌شوند و هش آخرین ردیف حذفی در `AnchorHash` می‌ماند. |
-| D-13 | Discovery | خطای ثبت ممیزی در سرویس‌ها با `_ =` نادیده گرفته می‌شود | FAU_STG.4 | ۱ | سرویس‌هایی که `LogEvent` را دور می‌ریزند | — | باز | شکست ممیزی بی‌صدا می‌ماند. |
-| D-14 | Discovery | CSRF بدون کاربر، `UserID=0` ذخیره می‌کند | FAU_GEN.2 | ۱ | `internal/platform/middleware/csrf.go` | — | باز | بخشی از علت R1-01. |
+| D-13 | Discovery | خطای ثبت ممیزی در سرویس‌ها با `_ =` نادیده گرفته می‌شود | FAU_STG.4 | ۱ | `internal/platform/apperror/apperror.go`، `internal/platform/security/audit/event.go` | `TestErrAuditUnavailable_StatusAndMessage`، `TestUnavailable_NilStaysNil` | در حال انجام | `Record` خطا برمی‌گرداند و `AUDIT_UNAVAILABLE` تعریف شده. سرویس‌ها هنوز خطای `LogEvent` را دور می‌ریزند. |
+| D-14 | Discovery | CSRF بدون کاربر، `UserID=0` ذخیره می‌کند | FAU_GEN.2 | ۱ | `internal/platform/middleware/csrf.go`، `internal/platform/middleware/actor.go` | `TestD14_ActorFromContextWithoutUserIsNil` | در حال انجام | بدون کاربر، `UserID` تهی است. ثبت CSRF هنوز `LogEvent` است. |
 | D-15 | Discovery | قفل IP روی کل `/api` اعمال می‌شود | FIA_AFL | ۴ | `internal/platform/middleware/ratelimit.go` | — | باز | قفل یک IP کار پذیرش را می‌بندد. |
 | D-16 | Discovery | فیلتر تاریخ لاگ ممکن است تاریخ شمسی بفرستد و سرور میلادی بخواند؛ فیلتر IP برابری دقیق است | FAU_SAR.3 | ۱ | `frontend/src/modules/logs`، `internal/platform/security/audit/model.go` | — | باز | بخشی از «فیلتر کار نمی‌کند» در R1-01. |
 | D-17 | Discovery | ایجاد کاربر همیشه `UserType=User` می‌گذارد و فیلد ارسالی را دور می‌ریزد | FIA_ATD | ۴ | `internal/user/service.go` | — | باز | پزشک و دستیار در فهرست‌ها نمی‌آیند. بخشی از R1-14. |
@@ -80,7 +80,7 @@
 
 | شناسه | منبع | شرح کوتاه | الزام PP | فاز | فایل‌های کد | تست‌ها | وضعیت | یادداشت |
 |---|---|---|---|---|---|---|---|---|
-| PP-01 | PP | آغاز و توقف توابع ممیزی، و ثبت خواندن لاگ و تلاش ناموفق برای خواندن آن، ثبت نمی‌شود | FAU_GEN.1 | ۱ | راه‌اندازی سرور و API لاگ | — | باز | راه‌اندازی و خاموشی سرور رویداد ممیزی ندارند. |
+| PP-01 | PP | آغاز و توقف توابع ممیزی، و ثبت خواندن لاگ و تلاش ناموفق برای خواندن آن، ثبت نمی‌شود | FAU_GEN.1 | ۱ | `cmd/server/main.go`، `internal/platform/security/audit/types.go` | `TestRecord_SystemActor` | در حال انجام | `AUDIT_STARTED` پس از migrate و `AUDIT_STOPPED` پیش از Shutdown ثبت می‌شود. خواندن لاگ و رد خواندن هنوز ثبت نمی‌شود. |
 | PP-02 | PP | انتخاب رویدادهای قابل ممیزی بر اساس نوع رویداد و کاربر وجود ندارد | FAU_SEL.1 | ۱ | تنظیم ممیزی | — | باز | |
 | PP-03 | PP | هنگام عبور حجم لاگ از آستانه به مدیر هشدار داده نمی‌شود | FAU_STG.3 | ۳ | `logretention`، رابط مدیر | — | باز | اعلان در UI نیست. برچسب و واحد آستانه در D-19 است. |
 | PP-04 | PP | نتیجه بررسی صحت لاگ به مدیر نشان داده نمی‌شود | FAU_STG.1، FAU_STG.2 | ۱ | زنجیره هش `audit` | — | باز | بررسی و لنگر در D-11 و D-12 پیاده شده و منتظر تست DB است. نمایش نتیجه به مدیر هنوز نیست. |

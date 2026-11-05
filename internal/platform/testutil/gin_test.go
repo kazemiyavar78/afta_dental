@@ -14,6 +14,7 @@ func TestNewTestGinContext_SetsMiddlewareKeys(t *testing.T) {
 	body := []byte(`{"name":"نمونه"}`)
 	g := NewTestGinContext(http.MethodPost, "/api/patients", body)
 	g.SetUserID(7)
+	g.SetUsername("sara")
 	g.SetRoleName("Reception")
 	perms := []string{"patient.read", "patient.create"}
 	g.SetPermissions(perms)
@@ -38,6 +39,10 @@ func TestNewTestGinContext_SetsMiddlewareKeys(t *testing.T) {
 	gotUser, ok := g.Context.Get(middleware.ContextKeyUserID)
 	if !ok || gotUser != 7 {
 		t.Fatalf("userID در context نیست: %v", gotUser)
+	}
+	gotName, ok := g.Context.Get(middleware.ContextKeyUsername)
+	if !ok || gotName != "sara" {
+		t.Fatalf("username در context نیست: %v", gotName)
 	}
 	gotRole, ok := g.Context.Get(middleware.ContextKeyRoleName)
 	if !ok || gotRole != "Reception" {

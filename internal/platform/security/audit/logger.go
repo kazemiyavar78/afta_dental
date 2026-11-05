@@ -1,9 +1,9 @@
 package audit
 
-// EventLogger قرارداد ثبت رویداد ممیزی است.
+// EventLogger قرارداد ثبت قدیمی است و تا مهاجرت فراخوانی‌ها می‌ماند.
 // LogEvent شناسه کاربر (nil اگر فاعل ناشناس باشد)، IP، نوع رویداد و توضیح را می‌گیرد
-// و خطای ذخیره‌سازی را برمی‌گرداند. Manager همین متد را دارد.
-// سرویس‌ها هنوز *Manager می‌گیرند؛ وصل‌کردنشان به این interface کار فاز ۱ است.
+// و خطای ذخیره‌سازی را برمی‌گرداند. Manager همین متد را دارد و ردیف نسخه ۱ می‌نویسد.
+// ثبت جدید Record روی Manager است. سرویس‌ها هنوز *Manager می‌گیرند.
 type EventLogger interface {
 	LogEvent(userID *int, ip, eventType, description string) error
 }

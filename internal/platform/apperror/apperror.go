@@ -41,4 +41,6 @@ var (
 	ErrWorkHours     = New("WORK_HOURS", "ورود خارج از ساعات کاری مجاز نیست.", "outside work hours", 403)
 	ErrCSRF          = New("CSRF", "توکن CSRF نامعتبر است.", "csrf validation failed", 403)
 	ErrIntegrity     = New("INTEGRITY", "یکپارچگی داده‌ها نقض شده است.", "integrity check failed", 500)
+	// D-13 / FAU_STG.4: شکست ثبت ممیزی نباید بی‌صدا بماند و عملیات تغییردهنده نباید تمام شود.
+	ErrAuditUnavailable = New("AUDIT_UNAVAILABLE", "ثبت رویداد امنیتی ممکن نشد؛ عملیات انجام نشد.", "audit record failed", 503)
 )

@@ -12,6 +12,7 @@ import (
 const (
 	ContextKeySession   = "session"
 	ContextKeyUserID    = "userID"
+	ContextKeyUsername  = "username"
 	ContextKeyRoleName  = "roleName"
 	ContextKeySessionID = "sessionID"
 )
@@ -22,8 +23,11 @@ var publicPaths = map[string]bool{
 	"/api/health": true,
 }
 
-// SessionMiddleware بررسی نشست از کوکی session_id.
-func SessionMiddleware(sessionSvc *session.Service, secureCookies bool) gin.HandlerFunc {
+// SessionMiddleware نشست را از کوکی session_id می‌خواند و شناسه و نام کاربر را در context می‌گذارد.
+// sessionSvc خواندن نشست است. secureCookies برای هم‌خوانی با سازنده کوکی در ورود مانده است.
+// usernameOf یک بار نام کاربری را می‌خواند چون خود نشست نام را ندارد.
+// اگر نام پیدا نشود درخواست قطع نمی‌شود؛ رویداد بعدی نام خالی دارد.
+func SessionMiddleware(sessionSvc *session.Service, secureCookies bool, usernameOf func(userID int) (string, error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if publicPaths[c.Request.URL.Path] {
 			c.Next()
@@ -60,6 +64,11 @@ func SessionMiddleware(sessionSvc *session.Service, secureCookies bool) gin.Hand
 		c.Set(ContextKeySession, sess)
 		c.Set(ContextKeyUserID, sess.PersonnelAccountID)
 		c.Set(ContextKeySessionID, sessionID)
+		if usernameOf != nil {
+			if name, err := usernameOf(sess.PersonnelAccountID); err == nil && name != "" {
+				c.Set(ContextKeyUsername, name)
+			}
+		}
 		c.Next()
 	}
 }

@@ -1,6 +1,11 @@
 package audit
 
-import "sync"
+import (
+	"context"
+	"sync"
+
+	"gorm.io/gorm"
+)
 
 // memoryRepo زنجیره را در حافظه نگه می‌دارد تا تست واحد به پایگاه وصل نشود.
 type memoryRepo struct {
@@ -17,6 +22,7 @@ func newMemoryRepo() *memoryRepo {
 }
 
 // AppendChained رویداد را با هش آخرین ردیف، یا لنگر اگر ردیفی نمانده باشد، اضافه می‌کند.
+// build ردیف را از PrevHash می‌سازد. خروجی خطای build است.
 func (f *memoryRepo) AppendChained(build func(prevHash string) (*SecurityEvent, error)) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -35,6 +41,23 @@ func (f *memoryRepo) AppendChained(build func(prevHash string) (*SecurityEvent, 
 	stored.ID = f.nextID
 	f.events = append(f.events, stored)
 	return nil
+}
+
+// AppendChainedCtx همان AppendChained است و اگر ctx تمام شده باشد چیزی ذخیره نمی‌کند.
+// ctx لغو تست است. build ردیف را می‌سازد.
+func (f *memoryRepo) AppendChainedCtx(ctx context.Context, build func(prevHash string) (*SecurityEvent, error)) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return f.AppendChained(build)
+}
+
+// AppendInTx در تست پایگاه ندارد و رویداد را در حافظه اضافه می‌کند.
+// tx نادیده گرفته می‌شود. build همان سازنده ردیف است.
+func (f *memoryRepo) AppendInTx(_ *gorm.DB, build func(prevHash string) (*SecurityEvent, error)) error {
+	return f.AppendChained(build)
 }
 
 // FindAfterID ردیف‌های بعد از afterID را تا limit برمی‌گرداند و تعداد فراخوانی را می‌شمارد.

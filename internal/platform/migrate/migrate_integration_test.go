@@ -97,6 +97,77 @@ func TestIntegration_LogCleanupAndUploadCounterTablesExist(t *testing.T) {
 	})
 }
 
+// TestIntegration_SecurityEventNewColumnsExist ستون‌های فاعل، هدف و نسخه هش را بعد از Migrate می‌سنجد.
+// tx تراکنش تست است و در پایان rollback می‌شود. نبودن هر ستون تست را شکست می‌دهد.
+func TestIntegration_SecurityEventNewColumnsExist(t *testing.T) {
+	testutil.WithTestTx(t, func(tx *gorm.DB) {
+		if err := Migrate(tx, []interface{}{&audit.SecurityEvent{}}); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		required := []string{
+			"ActorUsername", "TargetType", "TargetID", "TargetName",
+			"Result", "Reason", "UserAgent", "Details", "HashVersion",
+		}
+		missing := missingNullableAuditColumns(t, tx, required)
+		if len(missing) > 0 {
+			t.Fatalf("ستون‌های SecurityEvents پس از Migrate نیستند یا تهی‌پذیری‌شان نادرست است: %s", strings.Join(missing, ", "))
+		}
+	})
+}
+
+// schemaColumnRow یک ستون از INFORMATION_SCHEMA.COLUMNS است.
+type schemaColumnRow struct {
+	ColumnName    string `gorm:"column:COLUMN_NAME"`
+	IsNullable    string `gorm:"column:IS_NULLABLE"`
+	ColumnDefault string `gorm:"column:COLUMN_DEFAULT"`
+}
+
+// missingNullableAuditColumns ستون‌هایی را برمی‌گرداند که نیستند یا قاعده تهی‌پذیری را ندارند.
+// db تراکنش تست است و names ستون‌های تازه‌اند. HashVersion باید NOT NULL و پیش‌فرض ۱ باشد.
+// بقیه باید تهی‌پذیر باشند تا ردیف قدیمی هنگام افزودن ستون نشکند.
+func missingNullableAuditColumns(t *testing.T, db *gorm.DB, names []string) []string {
+	t.Helper()
+	placeholders := make([]string, len(names))
+	args := make([]interface{}, 0, len(names)+1)
+	args = append(args, "SecurityEvents")
+	for i, name := range names {
+		placeholders[i] = "?"
+		args = append(args, name)
+	}
+	query := fmt.Sprintf(`
+		SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = ? AND COLUMN_NAME IN (%s)
+	`, strings.Join(placeholders, ", "))
+
+	var found []schemaColumnRow
+	if err := db.Raw(query, args...).Scan(&found).Error; err != nil {
+		t.Fatalf("خواندن ستون‌ها: %v", err)
+	}
+	byName := make(map[string]schemaColumnRow, len(found))
+	for _, row := range found {
+		byName[row.ColumnName] = row
+	}
+	var missing []string
+	for _, name := range names {
+		row, ok := byName[name]
+		if !ok {
+			missing = append(missing, name)
+			continue
+		}
+		if name == "HashVersion" {
+			if !strings.EqualFold(row.IsNullable, "NO") || !strings.Contains(row.ColumnDefault, "1") {
+				missing = append(missing, name+" (default)")
+			}
+			continue
+		}
+		if !strings.EqualFold(row.IsNullable, "YES") {
+			missing = append(missing, name+" (null)")
+		}
+	}
+	return missing
+}
+
 // missingSchemaTables نام‌هایی را برمی‌گرداند که در INFORMATION_SCHEMA.TABLES نیستند.
 // db اتصال یا تراکنش تست است و names نام جدول‌های مورد انتظار هستند.
 // خروجی زیرمجموعهٔ names است؛ فهرست خالی یعنی همه موجودند. خطای خواندن تست را متوقف می‌کند.

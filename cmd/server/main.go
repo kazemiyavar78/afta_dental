@@ -129,6 +129,15 @@ func main() {
 	userEncryptSvc := encryption.NewUserEncryptionService(encryptor)
 
 	auditMgr := audit.NewManager(database, cfg.AuditHMACKey)
+	// FAU_GEN.1: آغاز توابع ممیزی بعد از آماده شدن schema ثبت می‌شود.
+	if err := auditMgr.Record(context.Background(), audit.Event{
+		Type:        audit.EventAuditStarted,
+		Result:      audit.ResultSuccess,
+		Actor:       audit.SystemActor(),
+		Description: "آغاز توابع ممیزی پس از migrate",
+	}); err != nil {
+		log.Fatalf("توقف امن راه‌اندازی: ثبت AUDIT_STARTED ناموفق بود: %v", err)
+	}
 	settingsSvc := settings.NewService(database, signer, auditMgr)
 
 	if err := settingsSvc.SeedDefaults(); err != nil {
@@ -173,7 +182,7 @@ func main() {
 
 	api := r.Group("/api")
 	api.Use(middleware.LoginRateLimiterMiddleware(loginGuard))
-	api.Use(middleware.SessionMiddleware(sessionSvc, cfg.SecureCookies))
+	api.Use(middleware.SessionMiddleware(sessionSvc, cfg.SecureCookies, userSvc.UsernameByID))
 	api.Use(middleware.SetRoleMiddleware(userSvc.GetRoleName))
 	api.Use(middleware.SetPermissionsMiddleware(userSvc.GetAuthPermissions))
 	api.Use(middleware.CSRFMiddleware(cfg.CSRFHMACKey, auditMgr))
@@ -303,6 +312,17 @@ func main() {
 
 	log.Println("در حال خاموش شدن...")
 	cancel()
+	// FAU_GEN.1: اتمام توابع ممیزی پیش از بستن شنونده ثبت می‌شود.
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := auditMgr.Record(stopCtx, audit.Event{
+		Type:        audit.EventAuditStopped,
+		Result:      audit.ResultSuccess,
+		Actor:       audit.SystemActor(),
+		Description: "اتمام توابع ممیزی هنگام خاموشی",
+	}); err != nil {
+		log.Printf("هشدار: ثبت AUDIT_STOPPED ناموفق بود: %v", err)
+	}
+	stopCancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)

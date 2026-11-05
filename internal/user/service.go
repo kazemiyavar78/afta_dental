@@ -377,6 +377,13 @@ func (s *Service) ChangePassword(userID int, req ChangePasswordRequest, ip strin
 	return nil
 }
 
+// UsernameByID نام کاربری را برای context نشست برمی‌گرداند.
+// userID شناسه همان کاربر نشست است. خروجی نام فعلی و خطای خواندن است.
+// فقط ستون Username خوانده می‌شود چون نشست از قبل کاربر را با نقش بار نکرده است.
+func (s *Service) UsernameByID(userID int) (string, error) {
+	return s.repo.FindUsernameByID(userID)
+}
+
 // GetRoleName نام نقش کاربر را برمی‌گرداند.
 func (s *Service) GetRoleName(userID int) (string, error) {
 	user, err := s.repo.FindByID(userID)

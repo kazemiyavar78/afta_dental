@@ -142,8 +142,7 @@ func (m *Manager) rowMatches(event SecurityEvent, prevHash string) bool {
 	if event.PrevHash != prevHash {
 		return false
 	}
-	expected := m.computeRowHash(event.PrevHash, event.UserID, event.Ip, event.EventType, event.Description, event.CreatedAt)
-	return expected == event.RowHash
+	return m.computeRowHash(event) == event.RowHash
 }
 
 // AdvanceChainState نتیجه VerifyChain را در state می‌نویسد.

@@ -59,6 +59,12 @@ func (g *GinTest) SetUserID(userID int) {
 	g.Context.Set(middleware.ContextKeyUserID, userID)
 }
 
+// SetUsername نام کاربری را با کلید ContextKeyUsername در context می‌گذارد.
+// username همان نامی است که SessionMiddleware پس از خواندن کاربر ذخیره می‌کند.
+func (g *GinTest) SetUsername(username string) {
+	g.Context.Set(middleware.ContextKeyUsername, username)
+}
+
 // SetRoleName نام نقش را با کلید ContextKeyRoleName در context می‌گذارد.
 // roleName همان رشته‌ای است که SetRoleMiddleware ذخیره می‌کند.
 func (g *GinTest) SetRoleName(roleName string) {

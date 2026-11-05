@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	Create(user *User) error
 	FindByID(id int) (*User, error)
+	FindUsernameByID(id int) (string, error)
 	FindByUsername(username string) (*User, error)
 	Update(user *User) error
 	Delete(id int) error
@@ -56,6 +57,19 @@ func NewRepository(db *gorm.DB) Repository {
 
 func (r *gormRepository) Create(user *User) error {
 	return r.db.Create(user).Error
+}
+
+// FindUsernameByID فقط ستون Username را می‌خواند.
+// id شناسه کاربر است. اگر ردیفی نباشد خطا ErrRecordNotFound است و نام خالی برمی‌گردد.
+func (r *gormRepository) FindUsernameByID(id int) (string, error) {
+	var row struct {
+		Username string `gorm:"column:Username"`
+	}
+	err := r.db.Model(&User{}).Select("Username").Where("ID = ?", id).Take(&row).Error
+	if err != nil {
+		return "", err
+	}
+	return row.Username, nil
 }
 
 func (r *gormRepository) FindByID(id int) (*User, error) {

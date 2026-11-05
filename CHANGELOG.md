@@ -6,6 +6,7 @@
 
 ### اضافه‌شده
 
+- feat(audit): رویداد امنیتی نام کاربری فاعل، هدف، نتیجه، دلیل، User-Agent و جزئیات ماسک‌شده را در خود ردیف نگه می‌دارد. ثبت جدید با `Record` و هش نسخه ۲ است و ردیف‌های نسخه ۱ همچنان تأیید می‌شوند. شکست ثبت برای عملیات تغییردهنده کد `AUDIT_UNAVAILABLE` دارد؛ فراخوانی سرویس‌ها در گام بعد عوض می‌شود. آغاز و توقف ممیزی هنگام بالا آمدن و خاموشی سرور ثبت می‌شود (R1-01، R1-02، R1-08، D-13، D-14، FAU_GEN.1، FAU_GEN.2، FAU_STG.4). تست ستون‌ها `TestIntegration_SecurityEventNewColumnsExist` است. وضعیت تست پایگاه: منتظر اجرای کاربر.
 - test(platform): زیرساخت تست مشترک (`internal/platform/testutil`)، تست integration برای AutoMigrate، helper فرانت `renderWithProviders` و اسکریپت `scripts/afta-check.ps1`. منطق برنامه عوض نشده است. وضعیت تست پایگاه: منتظر اجرای کاربر.
 - ci: GitHub Actions برای `go vet`، تست واحد Go، `govulncheck`، و تست و build فرانت بدون پایگاه داده. `govulncheck` و `npm audit` تا فاز ۵ blocking نیستند چون `xlsx@0.18.5` آسیب‌پذیری شناخته‌شده دارد و باید در آن فاز جایگزین و سپس blocking شود.
 - docs(afta): نقشه راه به `docs/afta/roadmap.md` منتقل شد. `docs/afta/traceability.md` ایرادهای R1-01 تا R1-24، یافته‌های D-11 به بعد و شکاف‌های PP را با همان ستون‌ها دارد. اسکلت `user-guide.md` و `install-guide.md` و جدول `settings.md` اضافه شد. README با نسخه Go و قرارداد env و تست هم‌خوان شد.

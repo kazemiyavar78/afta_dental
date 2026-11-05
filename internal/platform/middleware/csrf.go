@@ -37,10 +37,7 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 		headerToken := c.GetHeader(CSRFHeaderName)
 
 		if err != nil || cookieToken == "" || headerToken == "" || cookieToken != headerToken {
-			userID, _ := c.Get(ContextKeyUserID)
-			uid, _ := userID.(int)
-			_ = auditMgr.LogEvent(&uid, c.ClientIP(), audit.EventCSRFViolation,
-				"توکن CSRF نامعتبر یا ناقص")
+			logCSRFFailure(c, auditMgr, "توکن CSRF نامعتبر یا ناقص")
 
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": apperror.ErrCSRF.UserMsg,
@@ -50,10 +47,7 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 		}
 
 		if !verifyCSRFToken(cookieToken, c, key) {
-			userID, _ := c.Get(ContextKeyUserID)
-			uid, _ := userID.(int)
-			_ = auditMgr.LogEvent(&uid, c.ClientIP(), audit.EventCSRFViolation,
-				"توکن CSRF با نشست مطابقت ندارد")
+			logCSRFFailure(c, auditMgr, "توکن CSRF با نشست مطابقت ندارد")
 
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": apperror.ErrCSRF.UserMsg,
@@ -64,6 +58,15 @@ func CSRFMiddleware(csrfKey string, auditMgr *audit.Manager) gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// logCSRFFailure نقض CSRF را ثبت می‌کند.
+// c درخواست است، auditMgr ثبت‌کننده است و description توضیح فارسی ردیف است.
+// D-14 / FAU_GEN.2: اگر کاربر در context نباشد UserID تهی می‌ماند، نه اشاره‌گر به صفر.
+// خطای ثبت تا مهاجرت سیاست D-13 در همین مسیر رد درخواست نادیده می‌ماند.
+func logCSRFFailure(c *gin.Context, auditMgr *audit.Manager, description string) {
+	actor := ActorFromContext(c)
+	_ = auditMgr.LogEvent(actor.UserID, c.ClientIP(), audit.EventCSRFViolation, description)
 }
 
 func setCSRFCookieIfSession(c *gin.Context, key []byte) {

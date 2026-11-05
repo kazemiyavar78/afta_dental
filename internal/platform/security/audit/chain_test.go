@@ -243,8 +243,19 @@ func TestCreatedAt_MicrosecondRoundTripKeepsHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("تجزیه زمان: %v", err)
 	}
-	before := m.computeRowHash("prev", nil, "127.0.0.1", EventLoginSuccess, "ping", stored)
-	after := m.computeRowHash("prev", nil, "127.0.0.1", EventLoginSuccess, "ping", roundTrip)
+	base := SecurityEvent{
+		PrevHash:    "prev",
+		Ip:          "127.0.0.1",
+		EventType:   EventLoginSuccess,
+		Description: "ping",
+		HashVersion: HashVersionV1,
+	}
+	beforeRow := base
+	beforeRow.CreatedAt = stored
+	afterRow := base
+	afterRow.CreatedAt = roundTrip
+	before := m.computeRowHash(beforeRow)
+	after := m.computeRowHash(afterRow)
 	if before != after {
 		t.Fatalf("هش قبل و بعد از رفت‌وبرگشت زمان یکی نیست")
 	}
@@ -259,8 +270,10 @@ func TestCreatedAt_MicrosecondRoundTripKeepsHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("تجزیه زمان ذخیره‌شده: %v", err)
 	}
-	hashed := m.computeRowHash(got.PrevHash, got.UserID, got.Ip, got.EventType, got.Description, got.CreatedAt)
-	rehashed := m.computeRowHash(got.PrevHash, got.UserID, got.Ip, got.EventType, got.Description, parsed)
+	hashed := m.computeRowHash(got)
+	parsedRow := got
+	parsedRow.CreatedAt = parsed
+	rehashed := m.computeRowHash(parsedRow)
 	if hashed != rehashed || hashed != got.RowHash {
 		t.Fatal("هش ذخیره‌شده با زمان رفت‌وبرگشت‌شده نمی‌خواند")
 	}
