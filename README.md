@@ -1,5 +1,7 @@
 # سیستم پذیرش بیماران — بک‌اند (طب پرداز)
 
+[![CI](https://github.com/kazemiyavar78/afta_dental/actions/workflows/ci.yml/badge.svg)](https://github.com/kazemiyavar78/afta_dental/actions/workflows/ci.yml)
+
 بک‌اند سیستم پذیرش کلینیک دندان‌پزشکی با رعایت الزامات امنیتی **افتا**.
 
 ## استک تکنولوژی
@@ -35,6 +37,7 @@ docs/                ← مستندات استقرار و چک‌لیست افت
 ## پیش‌نیازها
 
 - Go 1.22+
+- Node.js 22.17.0 (فایل `.nvmrc` و فیلد `engines` در `frontend/package.json`)
 - SQL Server 2019+
 - [golang-migrate CLI](https://github.com/golang-migrate/migrate)
 
@@ -175,6 +178,8 @@ go test -tags integration ./...
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\afta-check.ps1
 ```
+
+CI روی push و pull request به `main` همین بررسی‌های بدون پایگاه داده را در [`.github/workflows/ci.yml`](.github/workflows/ci.yml) اجرا می‌کند: بک‌اند روی `windows-latest` (`go vet`، `go test ./... -count=1` بدون tag `integration`، `govulncheck`) و فرانت روی `ubuntu-latest` (`npm ci`، `npm test`، `npm run build`، `npm audit --omit=dev --audit-level=high`). هیچ secret و متغیر پایگاه داده در workflow نیست. تا فاز ۵، `govulncheck` و `npm audit` به‌خاطر آسیب‌پذیری شناخته‌شدهٔ `xlsx@0.18.5` با `continue-on-error` اجرا می‌شوند و در آن فاز باید blocking شوند.
 
 ## استقرار IIS
 

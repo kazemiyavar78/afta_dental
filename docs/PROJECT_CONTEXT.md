@@ -39,7 +39,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - Routing: react-router-dom ^7.18.1
 - Dates: dayjs ^1.11.21, jalaliday ^3.1.1
 - Export: `@react-pdf/renderer` ^4.9.0, xlsx ^0.18.5
-- Node.js version: UNKNOWN: no `engines` field and no `.nvmrc`.
+- Node.js `22.17.0` (`.nvmrc` and `frontend/package.json` `engines`). This is the version installed on the development machine and is the Node 22 LTS line. CI installs it via `node-version-file: .nvmrc`.
 
 **Schema changes**
 
@@ -84,6 +84,8 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
 - `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
 - `scripts/lib/redact.ps1` — masks passwords, connection strings, and session ids in script output. `scripts/lib/db.ps1` converts a DSN for those scripts and does not open a connection by itself.
+- `.github/workflows/ci.yml` — GitHub Actions on push and pull_request to `main`. Backend job on `windows-latest` (vet, unit test, govulncheck). Frontend job on `ubuntu-latest` (`npm ci`, test, build, `npm audit`). No secrets and no database variables.
+- `.nvmrc` — Node `22.17.0` for local tools and for the frontend CI job.
 - `frontend/src/main.tsx` — mounts React, enables Jalali dayjs.
 - `frontend/src/App.tsx` — RTL Ant Design, Persian locale, React Query, router. No custom theme object.
 - `frontend/src/test/renderWithProviders.tsx` — Vitest render with that same ConfigProvider, a QueryClient that does not retry, and MemoryRouter.
@@ -370,6 +372,7 @@ From the repo root unless noted. There is no Makefile or Dockerfile.
 - Integration test (SQL Server, skipped when `AFTA_TEST_DATABASE_URL` is empty): `go test -tags integration ./...`
 - Build: `go build -o server.exe ./cmd/server`
 - Full check (the operator runs this; it writes `docs/afta/check-output/check-<yyyyMMdd-HHmm>.txt`): `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\afta-check.ps1`
+- CI (no database, no secrets): `.github/workflows/ci.yml` on push and pull_request to `main`. Backend (`windows-latest`): `actions/setup-go` with `go-version-file: go.mod` and module cache, then `go vet ./...`, `go test ./... -count=1` (no `integration` tag), `govulncheck ./...`. Frontend (`ubuntu-latest`): Node from `.nvmrc`, npm cache, `npm ci`, `npm test`, `npm run build`, `npm audit --omit=dev --audit-level=high` in `frontend/`. `govulncheck` and `npm audit` use `continue-on-error` until phase 5.
 
 Database create script in README: `CREATE DATABASE afta_reception`. The running app uses whatever database is in `DATABASE_URL`.
 
@@ -400,6 +403,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 ## 10. Known issues, gaps, and TODOs
 
 - `TestIntegration_AutoMigrate_AllModelsCreate` is written and has not been executed here. Status: waiting for `scripts/afta-check.ps1` on a development database (`[db-test-pending]`).
+- `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
 - README is behind the code: Go version, “no AutoMigrate”, golang-migrate as the migration tool, sample-only reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
@@ -436,3 +440,5 @@ Shared Go helpers live in `internal/platform/testutil`:
 Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`.
 
 `scripts/afta-check.ps1` runs, in order, `GO_VET`, `GO_TEST_UNIT` (`go test ./... -count=1`), `GO_TEST_INTEGRATION` (`go test -tags integration ./... -count=1`), `GOVULNCHECK` (prints `go install golang.org/x/vuln/cmd/govulncheck@latest` and skips when the command is missing), `FRONT_TEST`, `FRONT_BUILD`, `NPM_AUDIT` (`npm audit --omit=dev` in `frontend/`), and `DB_CHECKS` (every `scripts/db-checks/*.sql`, read-only, each in a transaction that rolls back). A failed section does not stop the later sections. The text file ends with one status line per section. Output goes through `scripts/lib/redact.ps1`. Add new database checks as `.sql` files in that folder; do not add a second check script.
+
+`.github/workflows/ci.yml` repeats the no-database parts on GitHub: vet, `go test ./... -count=1`, non-blocking `govulncheck`, frontend test, frontend build, and non-blocking `npm audit --omit=dev --audit-level=high`. It does not run integration tests or `scripts/db-checks/`. `govulncheck` and `npm audit` stay non-blocking until phase 5, when `xlsx@0.18.5` is replaced and both steps must fail the job.
