@@ -115,10 +115,6 @@ func (m *memSessions) DeleteOldestByUserID(userID int) (*Session, error) {
 	return &removed, nil
 }
 
-func (m *memSessions) FindAll() ([]Session, error) {
-	return append([]Session(nil), m.items...), nil
-}
-
 func newCloseService(repo *memSessions, max int, rec *memAudit) *Service {
 	return &Service{
 		repo:     repo,

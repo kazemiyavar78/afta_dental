@@ -3,7 +3,6 @@ package audit
 import (
 	"context"
 	"errors"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -137,41 +136,6 @@ func (r *gormRepository) GetTableSizeMB() (float64, error) {
 		return 0, err
 	}
 	return result.ReservedKB / 1024.0, nil
-}
-
-// FindEvents رویدادها را با فیلتر اختیاری و ترتیب شناسه نزولی برمی‌گرداند.
-// filter کاربر، IP، نام کاربری و بازه تاریخ است. خروجی همان ردیف‌های جدول است.
-func (r *gormRepository) FindEvents(filter EventFilter) ([]SecurityEvent, error) {
-	var events []SecurityEvent
-	q := r.db.Model(&SecurityEvent{})
-	if filter.UserID != nil {
-		q = q.Where("SecurityEvents.UserID = ?", *filter.UserID)
-	}
-	if filter.IP != "" {
-		q = q.Where("SecurityEvents.Ip = ?", filter.IP)
-	}
-	if filter.Username != "" {
-		q = q.Joins("INNER JOIN Users ON Users.ID = SecurityEvents.UserID").
-			Where("Users.Username = ?", filter.Username)
-	}
-	if filter.FromDate != nil && !filter.FromDate.IsZero() {
-		q = q.Where("SecurityEvents.CreatedAt >= ?", *filter.FromDate)
-	}
-	if filter.ToDate != nil && !filter.ToDate.IsZero() {
-		to := endOfDay(*filter.ToDate)
-		q = q.Where("SecurityEvents.CreatedAt <= ?", to)
-	}
-	err := q.Order("SecurityEvents.ID DESC").Find(&events).Error
-	return events, err
-}
-
-// endOfDay پایان روز را برای فیلتر toDate برمی‌گرداند.
-// t تاریخ ورودی است. اگر ساعت صفر باشد تا آخرین لحظه همان روز جلو می‌رود.
-func endOfDay(t time.Time) time.Time {
-	if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
-		return t.Add(24*time.Hour - time.Nanosecond)
-	}
-	return t
 }
 
 // LoadChainState ردیف ثابت وضعیت را می‌خواند.

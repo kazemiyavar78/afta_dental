@@ -1,5 +1,7 @@
 package audit
 
+import "sort"
+
 // سطح اهمیت رویداد برای نمایش و اولویت بررسی.
 const (
 	SeverityCritical = "critical"
@@ -219,4 +221,53 @@ func ReasonLabel(code string) string {
 		return label
 	}
 	return code
+}
+
+// CatalogItem یک کد ذخیره‌شده و برچسب فارسی آن برای کشوی فیلتر است.
+type CatalogItem struct {
+	Value string
+	Label string
+}
+
+// ListEventTypes نوع‌های رویداد را با برچسب فارسی و به ترتیب کد برمی‌گرداند.
+// انواع منسوخ هم هستند تا ردیف قدیمی در فیلتر بدون نام نماند.
+// خروجی کپی مرتب‌شده کاتالوگ است.
+func ListEventTypes() []CatalogItem {
+	items := make([]CatalogItem, 0, len(eventCatalog))
+	for value, spec := range eventCatalog {
+		items = append(items, CatalogItem{Value: value, Label: spec.Label})
+	}
+	sortCatalog(items)
+	return items
+}
+
+// ListReasons کدهای دلیل را با برچسب فارسی و به ترتیب کد برمی‌گرداند.
+// خروجی کپی reasonLabels است تا فراخوان نقشه داخلی را عوض نکند.
+func ListReasons() []CatalogItem {
+	return labeledItems(reasonLabels)
+}
+
+// ListTargetTypes نوع‌های هدف را با برچسب فارسی و به ترتیب کد برمی‌گرداند.
+// خروجی کپی targetLabels است.
+func ListTargetTypes() []CatalogItem {
+	return labeledItems(targetLabels)
+}
+
+// labeledItems نقشه کد به برچسب را به فهرست مرتب تبدیل می‌کند.
+// src کاتالوگ داخلی است. خروجی کپی است و ترتیبش برای پاسخ API پایدار است.
+func labeledItems(src map[string]string) []CatalogItem {
+	items := make([]CatalogItem, 0, len(src))
+	for value, label := range src {
+		items = append(items, CatalogItem{Value: value, Label: label})
+	}
+	sortCatalog(items)
+	return items
+}
+
+// sortCatalog فهرست را بر اساس کد الفبایی مرتب می‌کند.
+// items همان فهرست ساخته‌شده است. خروجی ندارد.
+func sortCatalog(items []CatalogItem) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Value < items[j].Value
+	})
 }

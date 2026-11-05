@@ -7,72 +7,102 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
+	"github.com/tpdenta/afta-reception/internal/platform/listquery"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 	"github.com/tpdenta/afta-reception/internal/platform/security/audit"
 )
 
-// eventFinder خواندن رویدادهای ممیزی است. audit.Repository همین متد را دارد.
-type eventFinder interface {
-	FindEvents(filter audit.EventFilter) ([]audit.SecurityEvent, error)
+// logAPI خواندن فهرست، فراداده و وضعیت زنجیره است. *Service همین متدها را دارد.
+type logAPI interface {
+	List(ctx context.Context, q listquery.Query, onlyUserID *int) (listquery.Page[EventItem], error)
+	Meta(ctx context.Context) (MetaResponse, error)
+	Integrity(ctx context.Context) (IntegrityResponse, error)
 }
 
-// Handler فهرست لاگ امنیتی را برمی‌گرداند و خواندن صفحه اول را ثبت می‌کند.
+// Handler فهرست لاگ را برمی‌گرداند و خواندن صفحه اول را ثبت می‌کند.
 type Handler struct {
-	service eventFinder
-	audit   audit.Recorder
+	api   logAPI
+	audit audit.Recorder
 }
 
 // NewHandler هندلر لاگ را می‌سازد.
-// events خواندن ردیف‌ها و rec ثبت AUDIT_READ است. خروجی هندلر آماده ثبت مسیر است.
-func NewHandler(events eventFinder, rec audit.Recorder) *Handler {
-	return &Handler{service: events, audit: rec}
+// api خواندن ردیف‌ها و rec ثبت AUDIT_READ است. خروجی هندلر آماده ثبت مسیر است.
+func NewHandler(api logAPI, rec audit.Recorder) *Handler {
+	return &Handler{api: api, audit: rec}
 }
 
-// List همه لاگ‌ها را با فیلتر ip، username، from_date و to_date برای ادمین برمی‌گرداند.
-// فقط صفحه اول یک جستجو AUDIT_READ می‌نویسد تا صفحه‌بندی جدول لاگ را پر نکند.
+// List لاگ‌ها را با فیلتر و مرتب‌سازی سمت سرور برمی‌گرداند.
+// فقط صفحه اول یک جستجو AUDIT_READ می‌نویسد تا ورق زدن جدول لاگ را پر نکند.
+// FAU_SAR.3: ستون ناشناس پیش از خواندن پایگاه رد می‌شود.
 func (h *Handler) List(c *gin.Context) {
-	var req LogFilterQuery
-	if !middleware.BindQuery(c, &req) {
+	q, err := listquery.Parse(c.Request.URL.Query(), logSpec())
+	if err != nil {
+		middleware.WriteError(c, err)
 		return
 	}
-
-	list, err := h.service.FindEvents(audit.EventFilter{
-		IP:       req.IP,
-		Username: req.Username,
-		FromDate: req.FromDate,
-		ToDate:   req.ToDate,
-	})
+	page, err := h.api.List(c.Request.Context(), q, nil)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
 	if firstAuditPage(c.Query("page")) {
-		if err := h.recordRead(c, filterDetails(req)); err != nil {
+		if err := h.recordRead(c, q.FilterSummary()); err != nil {
 			middleware.WriteError(c, err)
 			return
 		}
 	}
-	c.JSON(http.StatusOK, list)
+	c.JSON(http.StatusOK, page)
 }
 
-// GetMyLogs لاگ‌های کاربر جاری را برمی‌گرداند.
-// صفحه اول همان جستجو AUDIT_READ با محدوده self می‌نویسد و داده حساس در جزئیات نیست.
+// GetMyLogs لاگ‌های کاربر جاری را صفحه‌بندی می‌کند.
+// صفحه اول AUDIT_READ با محدوده self می‌نویسد. فیلترها فقط روی ردیف‌های همان کاربر اعمال می‌شوند.
 func (h *Handler) GetMyLogs(c *gin.Context) {
-	uid, _ := c.Get(middleware.ContextKeyUserID)
-	userID := uid.(int)
-
-	list, err := h.service.FindEvents(audit.EventFilter{UserID: &userID})
+	userID, ok := currentUserID(c)
+	if !ok {
+		middleware.WriteError(c, apperror.ErrUnauthorized)
+		return
+	}
+	q, err := listquery.Parse(c.Request.URL.Query(), logSpec())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	page, err := h.api.List(c.Request.Context(), q, &userID)
 	if err != nil {
 		middleware.WriteError(c, err)
 		return
 	}
 	if firstAuditPage(c.Query("page")) {
-		if err := h.recordRead(c, map[string]string{"scope": "self"}); err != nil {
+		details := q.FilterSummary()
+		details["scope"] = "self"
+		if err := h.recordRead(c, details); err != nil {
 			middleware.WriteError(c, err)
 			return
 		}
 	}
-	c.JSON(http.StatusOK, list)
+	c.JSON(http.StatusOK, page)
+}
+
+// Meta مقدارهای فیلتر را با برچسب فارسی برمی‌گرداند.
+// این مسیر خواندن ردیف لاگ نیست و AUDIT_READ جدا نمی‌نویسد.
+func (h *Handler) Meta(c *gin.Context) {
+	meta, err := h.api.Meta(c.Request.Context())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, meta)
+}
+
+// Integrity نتیجه آخرین بررسی زنجیره را برمی‌گرداند.
+// مجوز مسیر logs.read است. FAU_STG.2: نمایش نتیجه بررسی، نه خود هش.
+func (h *Handler) Integrity(c *gin.Context) {
+	status, err := h.api.Integrity(c.Request.Context())
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
 }
 
 // recordRead خواندن ممیزی را با فیلترهای غیرحساس ثبت می‌کند.
@@ -102,21 +132,13 @@ func firstAuditPage(page string) bool {
 	return page == "" || page == "1"
 }
 
-// filterDetails فیلترهای جستجوی لاگ را برای جزئیات ممیزی جمع می‌کند.
-// req پارامترهای query است. خروجی فقط همان فیلدهاست و بدنه ردیف‌ها را ندارد.
-func filterDetails(req LogFilterQuery) map[string]string {
-	details := map[string]string{}
-	if req.IP != "" {
-		details["ip"] = req.IP
+// currentUserID شناسه کاربر نشست را از context می‌خواند.
+// c درخواست است. ok نادرست یعنی نشست کاربر ندارد و باید ۴۰۱ برگردد.
+func currentUserID(c *gin.Context) (int, bool) {
+	raw, ok := c.Get(middleware.ContextKeyUserID)
+	if !ok {
+		return 0, false
 	}
-	if req.Username != "" {
-		details["username"] = req.Username
-	}
-	if req.FromDate != nil {
-		details["from_date"] = req.FromDate.Format("2006-01-02")
-	}
-	if req.ToDate != nil {
-		details["to_date"] = req.ToDate.Format("2006-01-02")
-	}
-	return details
+	id, ok := raw.(int)
+	return id, ok
 }

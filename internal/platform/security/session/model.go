@@ -30,7 +30,6 @@ type Repository interface {
 	DeleteByUserID(userID int) error
 	CountByUserID(userID int) (int64, error)
 	DeleteOldestByUserID(userID int) (*Session, error)
-	FindAll() ([]Session, error)
 }
 
 type gormRepository struct {
@@ -92,10 +91,4 @@ func (r *gormRepository) DeleteOldestByUserID(userID int) (*Session, error) {
 		return nil, err
 	}
 	return &oldest, nil
-}
-
-func (r *gormRepository) FindAll() ([]Session, error) {
-	var sessions []Session
-	err := r.db.Order("CreationTime DESC").Find(&sessions).Error
-	return sessions, err
 }

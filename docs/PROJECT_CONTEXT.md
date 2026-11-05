@@ -55,6 +55,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/platform/migrate` — GORM AutoMigrate / DropTable.
 - `internal/platform/testutil` — shared test helpers: Gin context, in-memory audit recorder, and (integration build only) a SQL Server transaction that rolls back.
 - `internal/platform/apperror` — API error codes and user messages. `ErrValidation` is code `VALIDATION_ERROR`, HTTP 400, user message «اطلاعات ورودی نامعتبر یا ناقص است.»
+- `internal/platform/listquery` — server-side page, filter, and sort. Each API supplies an allowlist of column name to SQL expression, type, and whether that column can be sorted or filtered.
 - `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check, and `BindJSON` / `BindQuery`. After the session is found, one username lookup stores `username` in the Gin context. `ActorFromContext` reads user id, username, IP, and User-Agent. If no user is in the context, the id is nil.
 - `internal/platform/security/encryption` — AES-GCM and per-entity integrity hashes.
 - `internal/platform/security/integrity` — HMAC signer.
@@ -78,7 +79,7 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/specialcode` — third-party “special code” on a reception.
 - `internal/regulation` — service-interval rules and required photos.
 - `internal/report` — SQL report queries.
-- `internal/logs` — security-event list API. The root `.gitignore` and `frontend/.gitignore` use `/logs/` so only a `logs` directory next to that file is ignored. `*.log` still ignores log files. `internal/logs` and `frontend/src/modules/logs` are source and are tracked (D-10).
+- `internal/logs` — security-event list API (`listquery`), filter metadata, and audit-chain status. The root `.gitignore` and `frontend/.gitignore` use `/logs/` so only a `logs` directory next to that file is ignored. `*.log` still ignores log files. `internal/logs` and `frontend/src/modules/logs` are source and are tracked (D-10).
 - `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs. AFTA working docs: `docs/afta/roadmap.md`, `docs/afta/traceability.md`, `docs/afta/settings.md`, `docs/afta/user-guide.md`, `docs/afta/install-guide.md`, `docs/afta/discovery-phase0-1.md`.
 - `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
 - `scripts/afta-discovery.ps1` — discovery run. Masking and DSN conversion come from `scripts/lib/redact.ps1` and `scripts/lib/db.ps1`. A null SQL parameter is sent as `DBNull`. A query result is returned as one `DataTable` so PowerShell does not unroll the rows.
@@ -146,6 +147,23 @@ Responses from `middleware.WriteError` are JSON `{ "error": string, "code": stri
 
 Invalid JSON or query input is a Gin error, not an `AppError`. `middleware.BindJSON` and `middleware.BindQuery` answer that with HTTP 400, code `VALIDATION_ERROR`, message «اطلاعات ورودی نامعتبر یا ناقص است.» (`apperror.ErrValidation`, D-08). The response has no field name and no submitted value. The server log records the field name and the validation tag only. URI binding is unchanged.
 
+### List query (`internal/platform/listquery`)
+
+Shared contract for server-side lists. `GET /api/logs`, `GET /api/logs/user`, and `GET /api/sessions` use it. The column map is owned by that API. `Expr` is SQL written in Go. The request can name a column and send a value. It cannot send SQL.
+
+| Param | Rule |
+|---|---|
+| `page` | Integer ≥ 1. Omitted means 1. |
+| `page_size` | Integer ≥ 1. Omitted means 20. A value above 100 is clamped to 100. |
+| `sort` | Column key that is `Sortable`. Omitted uses that API’s default. |
+| `order` | `asc` or `desc`. Omitted uses that API’s default direction. |
+| `filter[column]` | `text`: `LIKE '%value%'` with `%`, `_`, `\`, and `[` escaped. `exact`: equality. `enum`: comma-separated `IN`. `bool`: `true` or `false`. |
+| `filter[column_from]`, `filter[column_to]` | `number` (integer, both ends inclusive) and `date`. A date is Gregorian `YYYY-MM-DD` only. `from` is 00:00:00 UTC that day. `to` includes the whole day (`<` next midnight UTC). |
+
+An unknown sort, order, or filter name is HTTP 400 `VALIDATION_ERROR`. The message does not echo the submitted value. Empty filter values add no condition. Every value is a SQL parameter.
+
+Success body: `{ "items": [], "total": 0, "page": 1, "page_size": 20 }`. `items` is an array, including when the page is empty.
+
 `UpdateSettingByID` does not write the setting name or value to stdout. If the save fails, the log line is the key name and the error, not the new value (D-09). `CheckWorkHours` does not print the work-hour start or end values. `cmd/seed-admin` still prints the admin username and password; that stays until phase 6.
 
 ### Health and auth (`internal/user/routes.go`, `cmd/server/main.go`)
@@ -173,7 +191,7 @@ Invalid JSON or query input is a Gin error, not an `AppError`. `middleware.BindJ
 | GET | `/api/permissions` | `roles.read` | — | `[]PermissionResponse` |
 | GET | `/api/security/settings` | `security.settings` | — | settings with Persian labels (`SettingsDicFN`) |
 | PUT | `/api/security/settings` | `security.settings` | `UpdateSecuritySettingRequest` id, name, value | message |
-| GET | `/api/sessions` | handler: admin or `users.listSessions` sees others; optional query `user_id` | — | `[]SessionResponse` |
+| GET | `/api/sessions` | session. Admin or `users.listSessions` lists every session and may filter or sort `user_id` (`filter[user_id_from]`, `filter[user_id_to]`). Anyone else only sees their own rows; `user_id` is not a column for them. | listquery: `username` (text, `LEFT JOIN Users`), `ip` (text, trimmed), `browser` (text), `creation_time` (date). Default sort `creation_time` desc. | `{items, total, page, page_size}` of `SessionResponse` (`id`, `username`, `ip`, `browser`, `creation_time`, `user_id`) |
 | DELETE | `/api/sessions/:id` | session | id | message |
 
 ### Patients (`internal/patient`)
@@ -272,10 +290,18 @@ Amounts on credit accounts are rial (`CreditAccount` comments). Other money fiel
 
 ### Logs (`internal/logs`)
 
+Columns, all filterable and sortable: `id` (number), `created_at` (date), `actor_username` (text), `target_name` (text), `target_type` (enum), `event_type` (enum), `result` (enum), `reason` (enum), `ip` (text, trimmed), `user_agent` (text), `description` (text). Default sort is `id` desc.
+
+`actor_username` is `COALESCE` of the stored name, `Users.Username` from a `LEFT JOIN`, and «سیستم/ناشناس» when `UserID` is null and no name was stored. Rows with `HashVersion` 1 use that join. The same expression is the filter. Each item also has `event_type_label` and `reason_label`.
+
+The first page of `GET /api/logs` and `GET /api/logs/user` writes `AUDIT_READ`. Details are the accepted filters (and `scope=self` for the user route), not row bodies. A later page does not write it. A denied `/api/logs` path, including `/api/logs/meta` and `/api/logs/integrity`, writes `AUDIT_READ_DENIED`.
+
 | Method | Path | Permission | Input | Output |
 |---|---|---|---|---|
-| GET | `/api/logs` | `logs.read` | query ip, username, from_date, to_date (`2006-01-02`), optional `page` | `[]SecurityEvent`. `page` empty or `1` writes `AUDIT_READ` with those filters and no row bodies. A later page does not. Denial of this path writes `AUDIT_READ_DENIED`. |
-| GET | `/api/logs/user` | session only | optional `page` | events for the current user. First page writes `AUDIT_READ` with `scope=self`. |
+| GET | `/api/logs` | `logs.read` | listquery | page of log items |
+| GET | `/api/logs/user` | session | listquery, limited to that user’s `UserID` | page of log items |
+| GET | `/api/logs/meta` | `logs.read` | — | `event_types`, `reasons`, `target_types`, each `{value, label}` in Persian. Includes deprecated event codes so old rows can be filtered. |
+| GET | `/api/logs/integrity` | `logs.read` | — | `last_check_at` (null if never checked), `last_result` (`ok` or `broken`), `broken_at_id`. No chain hash (FAU_STG.2). |
 
 ### Reports (`internal/report/routes.go`)
 
@@ -310,7 +336,7 @@ GORM models. `gorm.Model` adds `ID`, `CreatedAt`, `UpdatedAt`, `DeletedAt` (soft
 | `user.RolePermission` | `RolePermissions` | Composite key RoleID + PermissionID, IntegrityHash. |
 | `session.Session` | `Sessions` | UUID `Id` (SQL Server uniqueidentifier), Ip, Browser, CreationTime, PersonnelAccountID. |
 | `settings.SecuritySetting` | `SecuritySettings` | SettingName unique, SettingValue, IntegrityHash. `LastVerifiedEventId` is not a setting; startup deletes that row if it still exists. |
-| `audit.SecurityEvent` | `SecurityEvents` | Hash chain PrevHash / RowHash. `CreatedAt` is microsecond UTC. `UserID` is the actor id. `ActorUsername` is that username at event time (not a join). Nullable: `ActorUsername`, `TargetType`, `TargetID`, `TargetName`, `Result` (`success`/`failure`), `Reason`, `UserAgent`, `Details` (masked JSON). `HashVersion` tinyint NOT NULL default 1. Version 2 hashes the new fields too. |
+| `audit.SecurityEvent` | `SecurityEvents` | Hash chain PrevHash / RowHash. `CreatedAt` is microsecond UTC. `UserID` is the actor id. `ActorUsername` is that username at event time. The list API fills a missing name with `LEFT JOIN Users` and does not change the stored row. Nullable: `ActorUsername`, `TargetType`, `TargetID`, `TargetName`, `Result` (`success`/`failure`), `Reason`, `UserAgent`, `Details` (masked JSON). `HashVersion` tinyint NOT NULL default 1. Version 2 hashes the new fields too. |
 | `audit.AuditChainState` | `AuditChainStates` | Single row. Checkpoint and cleanup anchor for the hash chain. `IntegrityHash` is HMAC with `INTEGRITY_HMAC_KEY`, not the audit chain key. |
 | `loginguard.LoginAttempt` | `LoginAttempts` | PK Ip, FailedCount, LockedUntil. |
 | `logretention.LogCleanupSummary` | `LogCleanupSummaries` | Written by the background worker. Included in startup `Migrate`. |
@@ -413,7 +439,8 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 ## 10. Known issues, gaps, and TODOs
 
 - D-01 is done pending the consultant. `docs/afta/check-output/discovery-20261105-2123.txt` (section Q6) lists `LogCleanupSummaries` and `UploadCounters` on the development database. `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` remain integration tests and are not part of `go test ./...`.
-- R1-02, R1-04, R1-06, R1-07, R1-08, R1-17, R1-21, and PP-01 are done pending the consultant. Role, user, session, settings, and login events use `Record` with the request actor. A failed write returns `AUDIT_UNAVAILABLE`. Session close is two events and the description has no full session id. Settings changes store the Persian label and the value before and after. User updates store only changed fields; password hash and security code stay out of that diff. Log read is recorded on the first page only, and a denied `/api/logs` request records `AUDIT_READ_DENIED`. The log screen still does not show the new columns (R1-01, D-16).
+- R1-02, R1-04, R1-06, R1-07, R1-08, R1-17, R1-21, and PP-01 are done pending the consultant. Role, user, session, settings, and login events use `Record` with the request actor. A failed write returns `AUDIT_UNAVAILABLE`. Session close is two events and the description has no full session id. Settings changes store the Persian label and the value before and after. User updates store only changed fields; password hash and security code stay out of that diff. Log read is recorded on the first page only, and a denied `/api/logs` request records `AUDIT_READ_DENIED`. The log and session screens still send the old query and expect a JSON array (R1-01, R1-05, D-16).
+- R1-01, R1-05, D-16, and PP-04 are waiting for the database check on the new list API. `GET /api/logs` and `GET /api/sessions` page, filter, and sort on the server. IP filter is a trimmed text match, so `192.168.1` matches `192.168.1.x`. Dates are Gregorian `YYYY-MM-DD`. `GET /api/logs/integrity` returns the last chain check without the hash. `frontend/src/modules/logs/api.ts` still sends `ip`, `username`, `from_date`, and `to_date` and expects an array. `frontend/src/modules/users/api.ts` `fetchSessions` still sends `user_id` and expects an array. Until that UI task, those screens do not apply the new filters and only the first page is what an array-shaped client can misread. `GET /api/profile` still embeds that user’s sessions as an array.
 - R1-18 is in progress. Failed login, IP lock duration, and at most one blocked-login event per minute per IP are recorded. Locking the user account itself remains phase 4 (R1-15).
 - D-13 is waiting for the database check. Patient, organization, package, service, special code, regulation, fund, and bank account create events are covered by unit tests. Reception draft create and tariff save are `//go:build integration`. CSRF and log retention also call `Record`. A failed write returns `AUDIT_UNAVAILABLE`. Startup records `AUDIT_STARTED` and shutdown records `AUDIT_STOPPED`. `TestIntegration_SecurityEventNewColumnsExist`, `TestIntegration_D13_ReceptionDraftRecordsActorAndTarget`, and `TestIntegration_D13_TariffSaveRecordsActorAndTarget` are waiting for the database check.
 - D-14 is done pending the consultant. CSRF calls `Record` with `ActorFromContext`. When no user is in the context, `UserID` stays nil. If that write fails, the response is `AUDIT_UNAVAILABLE` (HTTP 503) instead of 403.
@@ -429,7 +456,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 - `fund.Fund.Balance` is `float64` and the development column type is float. Backend rules forbid float for money. It is not changed in this pass because existing rows need a data migration. Tracked as D-02 for phase 5.
 - `HasTransactions` on bank-account create/update responses is hardcoded `false` (`wallet/service.go` around the create and update mappings). List and get compute it from transactions.
 - Card payments are simulated. `SimulateCharge` always returns `Approved: true`.
-- `frontend/src/platform/components/DataTable/DataTable.tsx`: `TODO: pagination سمت سرور — فعلاً کلاینت‌ساید`.
+- `frontend/src/platform/components/DataTable/DataTable.tsx`: `TODO: pagination سمت سرور — فعلاً کلاینت‌ساید`. The log and session APIs now speak `listquery`. The screens do not yet.
 - `frontend/src/modules/users/hooks.ts`: `TODO: خواندن قوانین پیچیدگی رمز از endpoint تنظیمات امنیتی بک‌اند`. Password rules are enforced on the server (`passwordpolicy`) and not loaded into that form.
 - `docs/reports/migration-report.md` lists open report work: bundle Vazirmatn locally, lazy-load the PDF exporter, a backend export endpoint for large datasets, a print adapter for the reception receipt, and code-splitting `@react-pdf/renderer`. The same file notes PDF font from CDN, a 70mm reception receipt outside the tabular report engine, and a large PDF bundle.
 - `cmd/server/main.go` contains commented `DropTable` calls. They are not executed.
@@ -450,7 +477,9 @@ Shared Go helpers live in `internal/platform/testutil`:
 
 `TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestD08_BindJSON_EmptyOrIncompleteReturnsValidationError` expects HTTP 400 and `VALIDATION_ERROR` for an empty body and for a missing required field, with no field name in the response. `TestD08_BindJSON_ValidBodyFillsStruct` expects `BindJSON` to return true and fill the struct. `TestD08_BindQuery_InvalidValueDoesNotLeakFieldValue` expects the submitted query value to stay out of the response and the server log. `TestComputeRowHash_V1MatchesManualHMAC` and `TestComputeRowHash_V2IncludesNewFields` compare both hash versions with an independent HMAC. `TestHashVersions_MixedChainStillVerifies` keeps a version 1 row valid beside a version 2 row. `TestRecord_FullActor`, `TestRecord_SystemActor`, and `TestMaskSensitive_ReplacesSecretKeys` cover the new writer. `TestD14_ActorFromContextWithoutUserIsNil` uses `testutil` and expects a nil user id. `TestErrAuditUnavailable_StatusAndMessage` locks the 503 audit failure. No injectable clock was added; `computeRowHash` already takes the timestamp. `TestD11_HealthyChainAdvancesState`, `TestD11_TamperedDescriptionStopsAtPreviousRow`, `TestD11_RepeatCheckDoesNotRepeatTamperEvent`, `TestD12_CleanupPrefixThenVerifyRemaining`, `TestD11_ConcurrentLogEventKeepsSingleChain`, and `TestCreatedAt_MicrosecondRoundTripKeepsHash` use an in-memory audit repository. `TestR1_24_RemoveRetiredCheckpointAuditsOnce` checks that a leftover `LastVerifiedEventId` row is deleted once and audited as `SETTING_REMOVED`.
 
-`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. `TestIntegration_D11_ConcurrentLogAndVerifyChain` writes 100 events from two goroutines and expects `VerifyChain` from an empty checkpoint to stay intact. `TestIntegration_SecurityEventNewColumnsExist` checks the new `SecurityEvents` columns after `Migrate`. None of these are part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
+`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. `TestIntegration_D11_ConcurrentLogAndVerifyChain` writes 100 events from two goroutines and expects `VerifyChain` from an empty checkpoint to stay intact. `TestIntegration_SecurityEventNewColumnsExist` checks the new `SecurityEvents` columns after `Migrate`. `TestIntegration_R1_01_LogsFilterSortAndLegacyActor` checks log IP text match, sort, the user join for a version 1 row, and «سیستم/ناشناس» when `UserID` is null. `TestIntegration_R1_05_SessionFilterAndSort` checks session IP filter, browser sort, and that a non-manager does not see another user’s session. None of these are part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
+
+`TestListQuery_UnknownSortAndFilterRejected`, `TestListQuery_TextLikeEscapesWildcards`, `TestListQuery_EnumInMultipleValues`, `TestListQuery_DateRangeThroughEndOfDay`, and `TestListQuery_PageSizeCappedAt100` build SQL with GORM dry-run and do not open SQL Server. `TestR1_01_LogsWithoutPermissionAuditsDenial`, `TestR1_01_UnknownSortReturnsValidationError`, `TestR1_01_ListReturnsPageShape`, and `TestPP04_IntegrityRouteReturnsChainStatus` call the log routes with `httptest`. `TestR1_05_UnknownSortReturnsValidationError` and `TestR1_05_ListReturnsPageShape` do the same for sessions. `TestR1_01_ListSQLUsesLeftJoin` expects `LEFT JOIN` and not `INNER JOIN`.
 
 Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`. `frontend/d31-production-deps.test.ts` reads `package-lock.json` and expects the D-31 pins (axios 1.21.0, follow-redirects 1.16.2, react-router and react-router-dom 7.18.5, zod 4.6.7) and unchanged `xlsx@0.18.5`. It lives outside `src` so `tsc` does not need Node types.
 

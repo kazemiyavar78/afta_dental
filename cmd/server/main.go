@@ -277,7 +277,7 @@ func main() {
 	receptionHandler := reception.NewHandler(receptionSvc)
 	reception.RegisterRoutes(api, receptionHandler)
 
-	logsHandler := logs.NewHandler(auditMgr.Repository(), auditMgr)
+	logsHandler := logs.NewHandler(logs.NewService(database, auditMgr.Repository()), auditMgr)
 	logs.RegisterRoutes(api, logsHandler)
 
 	reportHandler := report.NewHandler(report.NewService(database))

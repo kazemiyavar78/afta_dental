@@ -14,13 +14,13 @@ type CreateUserRequest struct {
 
 // UpdateUserRequest درخواست به‌روزرسانی کاربر.
 type UpdateUserRequest struct {
-	Address     *string `json:"address"`
-	Name        *string `json:"name"`
-	Family      *string `json:"family"`
-	PhoneNumber *string `json:"phone_number"`
-	MedicalCode *string `json:"medical_code"`
-	RoleID      *int    `json:"role_id"`
-	IsActive    *bool   `json:"is_active"`
+	Address     *string   `json:"address"`
+	Name        *string   `json:"name"`
+	Family      *string   `json:"family"`
+	PhoneNumber *string   `json:"phone_number"`
+	MedicalCode *string   `json:"medical_code"`
+	RoleID      *int      `json:"role_id"`
+	IsActive    *bool     `json:"is_active"`
 	UserType    *UserType `json:"user_type"`
 }
 
@@ -38,19 +38,19 @@ type ChangePasswordRequest struct {
 
 // UserResponse پاسخ اطلاعات کاربر (بدون فیلدهای حساس).
 type UserResponse struct {
-	ID          int     `json:"id"`
-	Username    string  `json:"username"`
-	Address     string  `json:"address"`
-	Name        string  `json:"name"`
-	Family      string  `json:"family"`
-	PhoneNumber string  `json:"phone_number"`
-	MedicalCode *string `json:"medical_code"`
-	RoleID      int     `json:"role_id"`
-	RoleName    string  `json:"role_name"`
+	ID          int      `json:"id"`
+	Username    string   `json:"username"`
+	Address     string   `json:"address"`
+	Name        string   `json:"name"`
+	Family      string   `json:"family"`
+	PhoneNumber string   `json:"phone_number"`
+	MedicalCode *string  `json:"medical_code"`
+	RoleID      int      `json:"role_id"`
+	RoleName    string   `json:"role_name"`
 	UserType    UserType `json:"user_type"`
-	IsActive    bool    `json:"is_active"`
-	IsLocked    bool    `json:"is_locked"`
-	LastLoginAt *string `json:"last_login_at"`
+	IsActive    bool     `json:"is_active"`
+	IsLocked    bool     `json:"is_locked"`
+	LastLoginAt *string  `json:"last_login_at"`
 }
 
 // MeResponse پاسخ اطلاعات کاربر لاگین‌شده همراه مجوزها.
@@ -120,6 +120,7 @@ type SecuritySettingResponse struct {
 // SessionResponse پاسخ اطلاعات نشست.
 type SessionResponse struct {
 	ID           string `json:"id"`
+	Username     string `json:"username,omitempty"`
 	Ip           string `json:"ip"`
 	Browser      string `json:"browser"`
 	CreationTime string `json:"creation_time"`

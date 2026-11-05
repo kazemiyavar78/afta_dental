@@ -8,7 +8,8 @@ import (
 )
 
 // SecurityEvent مدل جدول رویدادهای امنیتی با Hash-Chain.
-// UserID شناسه فاعل است. ActorUsername نام همان کاربر در لحظه رویداد است و بعداً join نمی‌شود.
+// UserID شناسه فاعل است. ActorUsername نام همان کاربر در لحظه رویداد است.
+// ردیف نسخه ۱ این نام را ندارد؛ فهرست لاگ برای نمایش و فیلتر، آن را با LEFT JOIN به Users پر می‌کند.
 // ستون‌های جدید تهی‌پذیرند تا ردیف قدیمی بماند. HashVersion پیش‌فرض ۱ است.
 // FAU_GEN.2: فاعل، هدف، نتیجه، دلیل، IP و User-Agent در خود ردیف هستند.
 type SecurityEvent struct {
@@ -36,15 +37,6 @@ func (SecurityEvent) TableName() string {
 	return "SecurityEvents"
 }
 
-// EventFilter فیلترهای جستجوی رویدادهای امنیتی است.
-type EventFilter struct {
-	UserID   *int
-	IP       string
-	Username string
-	FromDate *time.Time
-	ToDate   *time.Time
-}
-
 // Repository دسترسی به رویدادها و ردیف وضعیت زنجیره است.
 // apply در DeleteVerifiedPrefix وضعیت جدید را از روی ردیف‌های در حال حذف می‌سازد.
 // اگر nil برگرداند حذفی انجام نمی‌شود. apply نباید رویداد تازه بسازد.
@@ -55,7 +47,6 @@ type Repository interface {
 	FindAfterID(afterID int64, limit int) ([]SecurityEvent, error)
 	Count() (int64, error)
 	GetTableSizeMB() (float64, error)
-	FindEvents(filter EventFilter) ([]SecurityEvent, error)
 	LoadChainState() (AuditChainState, error)
 	SaveChainState(state *AuditChainState) error
 	DeleteVerifiedPrefix(maxID int64, limit int, apply func([]SecurityEvent) (*AuditChainState, error)) ([]SecurityEvent, error)

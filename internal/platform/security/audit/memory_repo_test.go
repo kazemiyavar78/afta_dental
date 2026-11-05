@@ -90,15 +90,6 @@ func (f *memoryRepo) GetTableSizeMB() (float64, error) {
 	return 0, nil
 }
 
-// FindEvents کپی ردیف‌ها را برمی‌گرداند. filter در تست زنجیره استفاده نمی‌شود.
-func (f *memoryRepo) FindEvents(EventFilter) ([]SecurityEvent, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]SecurityEvent, len(f.events))
-	copy(out, f.events)
-	return out, nil
-}
-
 // LoadChainState کپی وضعیت ذخیره‌شده را برمی‌گرداند.
 func (f *memoryRepo) LoadChainState() (AuditChainState, error) {
 	f.mu.Lock()

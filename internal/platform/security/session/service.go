@@ -21,6 +21,7 @@ type intSetting interface {
 // Service سرویس مدیریت نشست‌ها.
 type Service struct {
 	repo     Repository
+	db       *gorm.DB
 	settings intSetting
 	audit    audit.Recorder
 	namer    func(userID int) (string, error)
@@ -32,6 +33,7 @@ type Service struct {
 func NewService(db *gorm.DB, settingsSvc *settings.Service, auditMgr *audit.Manager) *Service {
 	return &Service{
 		repo:     NewRepository(db),
+		db:       db,
 		settings: settingsSvc,
 		audit:    auditMgr,
 	}
@@ -132,15 +134,6 @@ func (s *Service) DeleteSession(ctx context.Context, id uuid.UUID, actor audit.A
 		return apperror.New("DB_ERROR", "خطا در حذف نشست.", err.Error(), 500)
 	}
 	return nil
-}
-
-// ListSessions لیست نشست‌ها را برمی‌گرداند (با canListAll همه، وگرنه فقط خودش).
-// actorUserID درخواست‌کننده است. خطا خطای خواندن پایگاه است.
-func (s *Service) ListSessions(actorUserID int, canListAll bool) ([]Session, error) {
-	if canListAll {
-		return s.repo.FindAll()
-	}
-	return s.repo.FindByUserID(actorUserID)
 }
 
 // DeleteAllUserSessions همه نشست‌های یک کاربر را با یک دلیل می‌بندد و برای هر کدام رویداد می‌سازد.

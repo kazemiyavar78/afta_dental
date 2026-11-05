@@ -2,11 +2,9 @@ package user
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/middleware"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 )
@@ -14,7 +12,7 @@ import (
 // Handler کنترلر HTTP ماژول کاربران.
 type Handler struct {
 	service    *Service
-	sessionSvc *session.Service
+	sessionSvc sessionDirectory
 	csrfKey    string
 	secure     bool
 }
@@ -350,48 +348,6 @@ func (h *Handler) GetUserProfile(c *gin.Context) {
 		User:     *userData,
 		Sessions: sessionResponses,
 	})
-}
-
-// ListSessions لیست نشست‌ها. با users.listSessions می‌توان با ?user_id فیلتر کرد.
-func (h *Handler) ListSessions(c *gin.Context) {
-	actorID, _ := c.Get(middleware.ContextKeyUserID)
-	uid, _ := actorID.(int)
-	canListAll := middleware.IsAdmin(c) || HasPermission(middleware.GetPermissions(c), "users.listSessions")
-
-	var sessions []session.Session
-	var err error
-
-	if userIDStr := c.Query("user_id"); userIDStr != "" {
-		targetID, parseErr := strconv.Atoi(userIDStr)
-		if parseErr != nil {
-			middleware.WriteError(c, apperror.New("VALIDATION_ERROR", "شناسه کاربر نامعتبر است.", parseErr.Error(), 400))
-			return
-		}
-		if !canListAll && targetID != uid {
-			middleware.WriteError(c, apperror.ErrForbidden)
-			return
-		}
-		sessions, err = h.sessionSvc.GetSessionsByUserID(targetID)
-	} else {
-		sessions, err = h.sessionSvc.ListSessions(uid, canListAll)
-	}
-	if err != nil {
-		middleware.WriteError(c, err)
-		return
-	}
-
-	resp := make([]SessionResponse, 0, len(sessions))
-	for _, s := range sessions {
-		resp = append(resp, SessionResponse{
-			ID:           s.ID.String(),
-			Ip:           s.Ip,
-			Browser:      s.Browser,
-			CreationTime: s.CreationTime.Format("2006-01-02T15:04:05Z"),
-			UserID:       s.PersonnelAccountID,
-		})
-	}
-
-	c.JSON(http.StatusOK, resp)
 }
 
 // DeleteSession حذف نشست.
