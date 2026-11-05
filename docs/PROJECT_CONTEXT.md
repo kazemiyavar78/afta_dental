@@ -53,13 +53,14 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/platform/config` — env loading.
 - `internal/platform/db` — SQL Server connection (max 25 open, 10 idle, 5 min lifetime).
 - `internal/platform/migrate` — GORM AutoMigrate / DropTable.
+- `internal/platform/testutil` — shared test helpers: Gin context, in-memory audit recorder, and (integration build only) a SQL Server transaction that rolls back.
 - `internal/platform/apperror` — API error codes and user messages.
 - `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check.
 - `internal/platform/security/encryption` — AES-GCM and per-entity integrity hashes.
 - `internal/platform/security/integrity` — HMAC signer.
 - `internal/platform/security/session` — `Sessions` table and `session_id` cookie.
 - `internal/platform/security/settings` — key/value security settings.
-- `internal/platform/security/audit` — hash-chained `SecurityEvents`.
+- `internal/platform/security/audit` — hash-chained `SecurityEvents`. `EventLogger` is the `LogEvent` interface. Services still take `*audit.Manager`. Switching services to the interface is phase 1.
 - `internal/platform/security/loginguard` — per-IP failed-login lock (`LoginAttempts`).
 - `internal/platform/security/logretention` — background log-size and integrity worker.
 - `internal/platform/security/passwordpolicy` — password rules from settings.
@@ -79,9 +80,14 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/report` — SQL report queries.
 - `internal/logs` — security-event list API.
 - `migrations/` — historical SQL migrations (see section 2).
-- `docs/` — this file, IIS notes, AFTA checklist, report design notes.
+- `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs.
+- `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
+- `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
+- `scripts/lib/redact.ps1` — masks passwords, connection strings, and session ids in script output. `scripts/lib/db.ps1` converts a DSN for those scripts and does not open a connection by itself.
 - `frontend/src/main.tsx` — mounts React, enables Jalali dayjs.
-- `frontend/src/App.tsx` — RTL Ant Design, React Query, router.
+- `frontend/src/App.tsx` — RTL Ant Design, Persian locale, React Query, router. No custom theme object.
+- `frontend/src/test/renderWithProviders.tsx` — Vitest render with that same ConfigProvider, a QueryClient that does not retry, and MemoryRouter.
+- `frontend/src/test-setup.ts` — Vitest setup (Jalali dayjs and `@testing-library/jest-dom`). `vitest.config.ts` already pointed at this file.
 - `frontend/src/platform/` — HTTP client, auth, layout, shared components, report engine.
 - `frontend/src/modules/` — feature pages (auth, users, roles, reception, patients, organization, organization-packages, services, fund, wallet, special-codes, regulations, tariff, settings, profile, logs, reports).
 - `frontend/vite.config.ts` — dev server port 5173, proxies `/api`.
@@ -342,6 +348,7 @@ Names and purpose only. No values.
 | `INTEGRITY_TICKER` | backend | Loaded into `Config.IntegrityTicker`. Not passed to the worker. The worker uses `LOG_RETENTION_TICKER` only. |
 | `SEED_ADMIN_USERNAME` | `cmd/seed-admin` | Username for the seeded admin. Code fallback exists. |
 | `SEED_ADMIN_PASSWORD` | `cmd/seed-admin` | Password for the seeded admin. Code fallback exists. Do not commit it. |
+| `AFTA_TEST_DATABASE_URL` | `go test -tags integration`, `scripts/afta-check.ps1` | SQL Server DSN for integration tests. Not read by the server. If empty, those tests call `t.Skip`. The check script may ask once to reuse `DATABASE_URL` from `.env` for a development database. It refuses a production-like name and the system databases `master`, `model`, `msdb`, and `tempdb`. |
 | `VITE_API_BASE_URL` | frontend | Axios base URL. Example file sets `/api`. |
 | `VITE_API_PROXY_TARGET` | `frontend/vite.config.ts` | Dev-server proxy target for `/api`. Code fallback `http://127.0.0.1:8080`. Not listed in `frontend/.env.example`. |
 
@@ -358,8 +365,11 @@ From the repo root unless noted. There is no Makefile or Dockerfile.
 - Dependencies: `go mod download`
 - Run API: `go run ./cmd/server` (loads `.env` if present)
 - Seed admin: `go run ./cmd/seed-admin` (needs the same required env as the server; permissions must already exist, so run the server once first — seed calls `FindAllPermissions` and fails if that query fails)
-- Test: `go test ./...`
+- Unit test (no SQL Server): `go test ./...`
+- Vet: `go vet ./...`
+- Integration test (SQL Server, skipped when `AFTA_TEST_DATABASE_URL` is empty): `go test -tags integration ./...`
 - Build: `go build -o server.exe ./cmd/server`
+- Full check (the operator runs this; it writes `docs/afta/check-output/check-<yyyyMMdd-HHmm>.txt`): `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\afta-check.ps1`
 
 Database create script in README: `CREATE DATABASE afta_reception`. The running app uses whatever database is in `DATABASE_URL`.
 
@@ -367,7 +377,7 @@ Database create script in README: `CREATE DATABASE afta_reception`. The running 
 
 - Install: `npm install`
 - Dev (port 5173, proxies `/api`): `npm run dev`
-- Test: `npm test` (`vitest run`)
+- Test: `npm test` (`vitest run`). Shared render helper: `src/test/renderWithProviders.tsx`.
 - Typecheck and production bundle: `npm run build` (`tsc && vite build`)
 - Preview the bundle: `npm run preview`
 
@@ -389,6 +399,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 
 ## 10. Known issues, gaps, and TODOs
 
+- `TestIntegration_AutoMigrate_AllModelsCreate` is written and has not been executed here. Status: waiting for `scripts/afta-check.ps1` on a development database (`[db-test-pending]`).
 - README is behind the code: Go version, “no AutoMigrate”, golang-migrate as the migration tool, sample-only reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
@@ -406,3 +417,22 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 - Patient, organization, and service business fields are stored in plaintext. AES protects the integrity token, not the columns.
 - Doctor and Reception roles are not created by seed. Default permissions apply only when a role with that exact name already exists and has zero permissions.
 - SQL migrations `0001`–`0006` and GORM AutoMigrate can diverge. UNKNOWN: which one a given database was built from.
+
+## 11. Tests
+
+Unit tests must not open SQL Server. `go test ./...` does not pass `-tags integration`, so files with `//go:build integration` are left out.
+
+Integration tests use that build tag and `AFTA_TEST_DATABASE_URL`. `internal/platform/testutil.OpenTestDB` skips the test when the variable is empty. `WithTestTx` runs the test body in a transaction and rolls it back, including when the test fails.
+
+Shared Go helpers live in `internal/platform/testutil`:
+
+- `NewTestGinContext` builds an `httptest` request and a Gin context. `SetUserID`, `SetRoleName`, `SetPermissions`, and `SetSession` write the same context keys as `internal/platform/middleware` (`userID`, `roleName`, `permissions`, `session`, `sessionID`). No new key names.
+- `FakeAuditRecorder` stores `LogEvent` calls in memory (actor, event type, description). It implements `audit.EventLogger`. Services are still constructed with `*audit.Manager`.
+
+`TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestComputeRowHash` calls `Manager.computeRowHash` and compares it with an independent HMAC. No injectable clock was added; `computeRowHash` already takes the timestamp.
+
+`TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. It is not part of `go test ./...`.
+
+Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`.
+
+`scripts/afta-check.ps1` runs, in order, `GO_VET`, `GO_TEST_UNIT` (`go test ./... -count=1`), `GO_TEST_INTEGRATION` (`go test -tags integration ./... -count=1`), `GOVULNCHECK` (prints `go install golang.org/x/vuln/cmd/govulncheck@latest` and skips when the command is missing), `FRONT_TEST`, `FRONT_BUILD`, `NPM_AUDIT` (`npm audit --omit=dev` in `frontend/`), and `DB_CHECKS` (every `scripts/db-checks/*.sql`, read-only, each in a transaction that rolls back). A failed section does not stop the later sections. The text file ends with one status line per section. Output goes through `scripts/lib/redact.ps1`. Add new database checks as `.sql` files in that folder; do not add a second check script.

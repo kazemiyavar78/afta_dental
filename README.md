@@ -158,8 +158,22 @@ go run ./cmd/seed-admin
 
 ## تست
 
+تست واحد (بدون SQL Server):
+
 ```bash
 go test ./...
+```
+
+تست integration (اگر `AFTA_TEST_DATABASE_URL` خالی باشد رد می‌شود):
+
+```bash
+go test -tags integration ./...
+```
+
+بررسی کامل (vet، هر دو نوع تست Go، تست و build فرانت، audit وابستگی‌ها، SQL خواندنی):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\afta-check.ps1
 ```
 
 ## استقرار IIS

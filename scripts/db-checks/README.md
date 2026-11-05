@@ -1,0 +1,10 @@
+# بررسی‌های خواندنی پایگاه
+
+`scripts/afta-check.ps1` هر فایل `*.sql` این پوشه را، به ترتیب نام، روی پایگاه تست اجرا می‌کند.
+
+- فقط `SELECT` (و `WITH` که به `SELECT` ختم شود) مجاز است. `INSERT`، `UPDATE`، `DELETE`، `MERGE`، `DDL` و `EXEC` رد می‌شوند.
+- هر فایل داخل یک تراکنش اجرا و در پایان rollback می‌شود.
+- رشته اتصال، رمز و session id در خروجی ماسک می‌شوند. ستون رمز یا session را در این کوئری‌ها انتخاب نکنید.
+- اگر `AFTA_TEST_DATABASE_URL` خالی باشد، اسکریپت یک بار می‌پرسد آیا `DATABASE_URL` داخل `.env` (پایگاه توسعه) استفاده شود. پایگاه production و پایگاه‌های سیستمی SQL Server استفاده نمی‌شوند.
+
+نتیجه در `docs/afta/check-output/check-<yyyyMMdd-HHmm>.txt` نوشته می‌شود.
