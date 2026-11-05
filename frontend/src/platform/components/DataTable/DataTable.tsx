@@ -8,7 +8,7 @@ type DataTableProps<T extends object> = {
   loading?: boolean;
   rowKey: keyof T | ((record: T) => string);
   pageSize?: number;
-  // TODO: pagination سمت سرور — فعلاً کلاینت‌ساید
+  // فهرست‌های لاگ و نشست به ServerDataTable رفته‌اند. بقیه صفحه‌ها تا فاز UI همین جدول کلاینت‌ساید را دارند.
 };
 
 /**

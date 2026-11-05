@@ -21,6 +21,7 @@ export type Role = {
 
 export type Session = {
   id: string;
+  username?: string;
   ip: string;
   browser: string;
   creation_time: string;

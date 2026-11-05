@@ -11,8 +11,3 @@ export async function fetchUserProfile(): Promise<UserProfileResponse> {
 export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
   await httpClient.post('/change-password', payload);
 }
-
-/** حذف یک نشست فعال */
-export async function deleteSession(sessionId: string): Promise<void> {
-  await httpClient.delete(`/sessions/${sessionId}`);
-}

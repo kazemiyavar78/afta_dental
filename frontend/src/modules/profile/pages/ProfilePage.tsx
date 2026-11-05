@@ -12,21 +12,16 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import {
-  DeleteOutlined,
-  LockOutlined,
-  DesktopOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { LockOutlined, DesktopOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { PageHeader } from '@/platform/components/PageHeader';
-import { DataTable } from '@/platform/components/DataTable';
-import { confirmDialog } from '@/platform/components/ConfirmDialog';
 import { useApiQuery } from '@/platform/hooks/useApiQuery';
 import { useApiMutation } from '@/platform/hooks/useApiMutation';
-import { changePassword, deleteSession, fetchUserProfile } from '../api';
-import type { ChangePasswordPayload, Session } from '../types';
+import { useAuth } from '@/platform/auth/useAuth';
+import { fetchSessionPage, scopeSessionQuery } from '@/modules/users/api';
+import { SessionTable } from '@/modules/users/components/SessionTable';
+import { changePassword, fetchUserProfile } from '../api';
+import type { ChangePasswordPayload } from '../types';
 
 /** قالب تاریخ شمسی برای نمایش در پروفایل */
 function formatDate(value: string | null | undefined): string {
@@ -41,8 +36,9 @@ type PasswordFormValues = ChangePasswordPayload & {
 /** صفحه پروفایل کاربر: اطلاعات حساب، تغییر رمز و نشست‌های فعال */
 export function ProfilePage() {
   const [passwordForm] = Form.useForm<PasswordFormValues>();
+  const { isAdmin, hasPermission } = useAuth();
 
-  const { data, isLoading, refetch } = useApiQuery({
+  const { data, isLoading } = useApiQuery({
     queryKey: ['profile'],
     queryFn: fetchUserProfile,
   });
@@ -53,57 +49,8 @@ export function ProfilePage() {
     onSuccess: () => passwordForm.resetFields(),
   });
 
-  const deleteSessionMutation = useApiMutation({
-    mutationFn: deleteSession,
-    successMessage: 'نشست با موفقیت حذف شد',
-    onSuccess: () => refetch(),
-  });
-
   const user = data?.user;
-  const sessions = data?.sessions ?? [];
-
-  const sessionColumns: ColumnsType<Session> = [
-    {
-      title: 'آدرس IP',
-      dataIndex: 'ip',
-      key: 'ip',
-    },
-    {
-      title: 'مرورگر / دستگاه',
-      dataIndex: 'browser',
-      key: 'browser',
-      ellipsis: true,
-    },
-    {
-      title: 'زمان ورود',
-      dataIndex: 'creation_time',
-      key: 'creation_time',
-      render: (value: string) => formatDate(value),
-    },
-    {
-      title: 'عملیات',
-      key: 'actions',
-      width: 120,
-      render: (_, record) => (
-        <Button
-          type="link"
-          danger
-          icon={<DeleteOutlined />}
-          loading={deleteSessionMutation.isPending}
-          onClick={() =>
-            confirmDialog({
-              title: 'حذف نشست',
-              content: 'آیا از حذف این نشست مطمئن هستید؟',
-              okType: 'danger',
-              onConfirm: () => deleteSessionMutation.mutateAsync(record.id),
-            })
-          }
-        >
-          حذف
-        </Button>
-      ),
-    },
-  ];
+  const canFilterByUserId = isAdmin || hasPermission('users.listSessions');
 
   if (isLoading) {
     return (
@@ -232,17 +179,15 @@ export function ProfilePage() {
               <Space>
                 <DesktopOutlined />
                 نشست‌های فعال
-                <Tag>{sessions.length}</Tag>
               </Space>
             }
           >
-            <DataTable
-              columns={sessionColumns}
-              data={sessions}
-              loading={isLoading}
-              rowKey="id"
-              pageSize={5}
-            />
+            {user && (
+              <SessionTable
+                queryKey={['sessions', 'profile', user.id]}
+                fetchPage={(query) => fetchSessionPage(scopeSessionQuery(query, user.id, canFilterByUserId))}
+              />
+            )}
           </Card>
         </Col>
       </Row>

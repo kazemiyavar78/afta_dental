@@ -1,23 +1,28 @@
 package logs
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
-// EventItem یک ردیف فهرست لاگ است. هش زنجیره و جزئیات خام در پاسخ نیستند.
+// EventItem یک ردیف فهرست لاگ است. هش زنجیره در پاسخ نیست.
+// Details همان JSON ماسک‌شده ذخیره‌شده است تا صفحه آن را ساخت‌یافته نشان بدهد، نه به‌صورت متن خام.
 // برچسب فارسی نوع و دلیل برای نمایش است و جدا از کد ذخیره‌شده فیلتر می‌شود.
 type EventItem struct {
-	ID             int64     `json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	ActorUsername  string    `json:"actor_username"`
-	TargetName     string    `json:"target_name"`
-	TargetType     string    `json:"target_type"`
-	EventType      string    `json:"event_type"`
-	EventTypeLabel string    `json:"event_type_label"`
-	Result         string    `json:"result"`
-	Reason         string    `json:"reason"`
-	ReasonLabel    string    `json:"reason_label"`
-	IP             string    `json:"ip"`
-	UserAgent      string    `json:"user_agent"`
-	Description    string    `json:"description"`
+	ID             int64           `json:"id"`
+	CreatedAt      time.Time       `json:"created_at"`
+	ActorUsername  string          `json:"actor_username"`
+	TargetName     string          `json:"target_name"`
+	TargetType     string          `json:"target_type"`
+	EventType      string          `json:"event_type"`
+	EventTypeLabel string          `json:"event_type_label"`
+	Result         string          `json:"result"`
+	Reason         string          `json:"reason"`
+	ReasonLabel    string          `json:"reason_label"`
+	IP             string          `json:"ip"`
+	UserAgent      string          `json:"user_agent"`
+	Description    string          `json:"description"`
+	Details        json.RawMessage `json:"details,omitempty"`
 }
 
 // Option یک مقدار فیلتر و برچسب فارسی آن برای فهرست کشویی است.
@@ -54,4 +59,5 @@ type eventRow struct {
 	IP            string    `gorm:"column:ip"`
 	UserAgent     string    `gorm:"column:user_agent"`
 	Description   string    `gorm:"column:description"`
+	Details       string    `gorm:"column:details"`
 }

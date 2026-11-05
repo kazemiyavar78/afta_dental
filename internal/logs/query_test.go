@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -34,6 +35,36 @@ func TestR1_01_ListSQLUsesLeftJoin(t *testing.T) {
 	}
 	if !strings.Contains(sql, unknownActorLabel) || !strings.Contains(sql, "LIKE") {
 		t.Fatalf("عبارت نام یا LIKE در SQL نیست: %s", sql)
+	}
+	if !strings.Contains(sql, "SecurityEvents.Details") {
+		t.Fatalf("جزئیات باید در SELECT باشد: %s", sql)
+	}
+	if strings.Contains(sql, "PrevHash") || strings.Contains(sql, "RowHash") || strings.Contains(sql, "IntegrityHash") {
+		t.Fatalf("هش نباید در فهرست باشد: %s", sql)
+	}
+}
+
+// TestR1_01_ToItemEmbedsDetailsObject جزئیات ماسک‌شده را به‌صورت شیء JSON برمی‌گرداند، نه رشته escape‌شده.
+func TestR1_01_ToItemEmbedsDetailsObject(t *testing.T) {
+	item := toItem(eventRow{Details: `{"name":{"before":"قدیم","after":"جدید"}}`})
+	raw, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `\"before\"`) || !strings.Contains(string(raw), `"before":"قدیم"`) {
+		t.Fatalf("جزئیات باید شیء باشد: %s", raw)
+	}
+}
+
+// TestR1_01_ToItemOmitsInvalidDetails متن نامعتبر، از جمله شناسه خام، را در پاسخ نمی‌گذارد.
+func TestR1_01_ToItemOmitsInvalidDetails(t *testing.T) {
+	item := toItem(eventRow{Details: `Id=1`})
+	raw, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "details") || strings.Contains(string(raw), "Id=1") {
+		t.Fatalf("جزئیات نامعتبر نباید در پاسخ باشد: %s", raw)
 	}
 }
 

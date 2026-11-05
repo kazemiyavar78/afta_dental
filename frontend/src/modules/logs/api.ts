@@ -1,22 +1,33 @@
 import { httpClient } from '@/platform/api/httpClient';
-import type { LogFilters, SecurityLog } from './types';
+import { toRequestParams, type ListQuery, type PageResult } from '@/platform/list/query';
+import type { LogIntegrity, LogMeta, SecurityLog } from './types';
 
 /**
- * دریافت همه لاگ‌ها با فیلتر — فقط ادمین.
+ * یک صفحه از لاگ امنیتی را با فیلتر و مرتب‌سازی سمت سرور می‌گیرد.
+ * @param query پارامترهای جدول
+ * @returns صفحه استاندارد listquery
  */
-export async function fetchLogs(filters: LogFilters = {}): Promise<SecurityLog[]> {
-  const params: Record<string, string> = {};
-  if (filters.ip) params.ip = filters.ip;
-  if (filters.username) params.username = filters.username;
-  if (filters.from_date) params.from_date = filters.from_date;
-  if (filters.to_date) params.to_date = filters.to_date;
-
-  const { data } = await httpClient.get<SecurityLog[]>('/logs', { params });
+export async function fetchLogs(query: ListQuery): Promise<PageResult<SecurityLog>> {
+  const { data } = await httpClient.get<PageResult<SecurityLog>>('/logs', {
+    params: toRequestParams(query),
+  });
   return data;
 }
 
-/** دریافت لاگ‌های کاربر جاری */
-export async function fetchMyLogs(): Promise<SecurityLog[]> {
-  const { data } = await httpClient.get<SecurityLog[]>('/logs/user');
+/**
+ * برچسب فارسی نوع رویداد، دلیل و نوع هدف را برای فیلتر کشویی می‌گیرد.
+ * @returns فراداده فیلتر
+ */
+export async function fetchLogMeta(): Promise<LogMeta> {
+  const { data } = await httpClient.get<LogMeta>('/logs/meta');
+  return data;
+}
+
+/**
+ * نتیجه آخرین بررسی زنجیره ممیزی را می‌گیرد. هش در پاسخ نیست.
+ * @returns زمان بررسی، نتیجه و شناسه اولین ردیف خراب
+ */
+export async function fetchLogIntegrity(): Promise<LogIntegrity> {
+  const { data } = await httpClient.get<LogIntegrity>('/logs/integrity');
   return data;
 }

@@ -2,7 +2,9 @@ package logs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/tpdenta/afta-reception/internal/platform/apperror"
 	"github.com/tpdenta/afta-reception/internal/platform/listquery"
@@ -106,7 +108,19 @@ func toItem(row eventRow) EventItem {
 		IP:             row.IP,
 		UserAgent:      row.UserAgent,
 		Description:    row.Description,
+		Details:        detailsObject(row.Details),
 	}
+}
+
+// detailsObject فقط شیء JSON معتبر را برای پاسخ نگه می‌دارد.
+// raw متن ستون Details است. خروجی nil یعنی خالی، نامعتبر، یا غیرشیء است و در JSON نمی‌آید.
+// هش زنجیره در این ستون نیست. مقدار از قبل ماسک شده است.
+func detailsObject(raw string) json.RawMessage {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") || !json.Valid([]byte(raw)) {
+		return nil
+	}
+	return json.RawMessage(raw)
 }
 
 // options برچسب‌های کاتالوگ ممیزی را به شکل پاسخ فیلتر درمی‌آورد.

@@ -25,7 +25,8 @@ const eventSelectSQL = "" +
 	"SecurityEvents.Reason AS reason, " +
 	"SecurityEvents.Ip AS ip, " +
 	"SecurityEvents.UserAgent AS user_agent, " +
-	"SecurityEvents.Description AS description"
+	"SecurityEvents.Description AS description, " +
+	"SecurityEvents.Details AS details"
 
 // logSpec ستون‌های GET /api/logs است. همه قابل فیلتر و مرتب‌سازی‌اند.
 // FAU_SAR.3 / R1-01: جستجو و مرتب‌سازی سمت سرور و فقط روی همین ستون‌هاست.
