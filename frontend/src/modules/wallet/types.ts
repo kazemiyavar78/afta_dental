@@ -16,6 +16,11 @@ export type WalletTransaction = {
   counterparty_card?: string | null;
   tracking_number?: string | null;
   bank_name?: string | null;
+  credit_account_id?: number | null;
+  credit_account_name?: string | null;
+  /** فقط برای کسر از اعتبار: آیا مبلغ واقعاً پرداخت شده است */
+  credit_paid?: boolean;
+  credit_paid_at?: string | null;
   paid_at?: string | null;
   /** شناسه کاربر عامل؛ 0 یعنی سیستم */
   performed_by: number;
@@ -67,6 +72,31 @@ export type BankAccountPayload = {
   account_number: string;
   card_number: string;
   account_name: string;
+};
+
+export type CreditChargePayload = {
+  file_id: number;
+  credit_account_id: number;
+  amount: number;
+  description?: string;
+};
+
+export type CreditAccount = {
+  id: number;
+  name: string;
+  description: string;
+  credit_limit: number;
+  used_amount: number;
+  remaining: number;
+  is_active: boolean;
+  has_transactions: boolean;
+};
+
+export type CreditAccountPayload = {
+  name: string;
+  description: string;
+  credit_limit: number;
+  is_active: boolean;
 };
 
 export type CardReaderSimulateResponse = {

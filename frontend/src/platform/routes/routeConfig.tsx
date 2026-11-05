@@ -12,6 +12,7 @@ import { PatientsPage } from '@/modules/patients/pages/PatientsPage';
 import { FundListPage } from '@/modules/fund/pages/FundListPage';
 import { FundFormPage } from '@/modules/fund/pages/FundFormPage';
 import { BankAccountsPage } from '@/modules/wallet/pages/BankAccountsPage';
+import { CreditAccountsPage } from '@/modules/wallet/pages/CreditAccountsPage';
 import { SpecialCodesPage } from '@/modules/special-codes/pages/SpecialCodesPage';
 import { RegulationsPage } from '@/modules/regulations/pages/RegulationsPage';
 import { TariffListPage } from '@/modules/tariff/pages/TariffListPage';
@@ -22,6 +23,7 @@ import { LogsPage } from '@/modules/logs/pages/LogsPage';
 import { RevenueByOrganizationPage } from '@/modules/reports/pages/RevenueByOrganizationPage';
 import { DoctorPerformancePage } from '@/modules/reports/pages/DoctorPerformancePage';
 import { UserPerformancePage } from '@/modules/reports/pages/UserPerformancePage';
+import { CreditAccountPaymentsPage } from '@/modules/reports/pages/CreditAccountPaymentsPage';
 import { RolesPage } from '@/modules/roles/pages/RolesPage';
 
 /** تعریف مسیر اپلیکیشن */
@@ -67,6 +69,7 @@ export const routeConfig: AppRoute[] = [
   { path: '/fund', element: <FundListPage />, requiredPermission: 'fund.read' },
   { path: '/fund/new', element: <FundFormPage />, requiredPermission: 'fund.create' },
   { path: '/bank-accounts', element: <BankAccountsPage />, requiredPermission: 'bank_account.read' },
+  { path: '/credit-accounts', element: <CreditAccountsPage />, requiredPermission: 'credit_account.read' },
   { path: '/special-codes', element: <SpecialCodesPage />, requiredPermission: 'special_code.read' },
   { path: '/regulations', element: <RegulationsPage />, requiredPermission: 'regulation.read' },
 
@@ -90,6 +93,11 @@ export const routeConfig: AppRoute[] = [
   {
     path: '/reports/user-performance',
     element: <UserPerformancePage />,
+    requiredPermission: 'reports.read',
+  },
+  {
+    path: '/reports/credit-account-payments',
+    element: <CreditAccountPaymentsPage />,
     requiredPermission: 'reports.read',
   },
 

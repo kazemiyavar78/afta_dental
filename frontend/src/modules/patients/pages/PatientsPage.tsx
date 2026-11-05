@@ -18,6 +18,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   ClearOutlined,
+  CreditCardOutlined,
   DollarOutlined,
   SwapOutlined,
   UnorderedListOutlined,
@@ -35,6 +36,7 @@ import { useApiQuery } from '@/platform/hooks/useApiQuery';
 import { useApiMutation } from '@/platform/hooks/useApiMutation';
 import { CashAdjustModal } from '@/modules/wallet/components/CashAdjustModal';
 import { CardToCardAdjustModal } from '@/modules/wallet/components/CardToCardAdjustModal';
+import { CreditChargeModal } from '@/modules/wallet/components/CreditChargeModal';
 import { PatientWalletLedgerModal } from '@/modules/wallet/components/PatientWalletLedgerModal';
 import {
   createPatient,
@@ -106,6 +108,7 @@ export function PatientsPage() {
   const [searchParams, setSearchParams] = useState<PatientSearchParams>({});
   const [cashPatient, setCashPatient] = useState<Patient | null>(null);
   const [cardToCardPatient, setCardToCardPatient] = useState<Patient | null>(null);
+  const [creditPatient, setCreditPatient] = useState<Patient | null>(null);
   const [ledgerPatient, setLedgerPatient] = useState<Patient | null>(null);
 
   const queryKey = useMemo(() => ['patients', searchParams], [searchParams]);
@@ -264,7 +267,7 @@ export function PatientsPage() {
     {
       title: 'عملیات',
       key: 'actions',
-      width: 440,
+      width: 560,
       fixed: 'left',
       render: (_, record) => (
         <>
@@ -281,6 +284,11 @@ export function PatientsPage() {
           <PermissionGuard permission="wallet.card_to_card">
             <Button type="link" icon={<SwapOutlined />} onClick={() => setCardToCardPatient(record)}>
               کارت به کارت
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="credit_charge.create">
+            <Button type="link" icon={<CreditCardOutlined />} onClick={() => setCreditPatient(record)}>
+              کسر از اعتبار
             </Button>
           </PermissionGuard>
           <PermissionGuard permission="patient.update">
@@ -552,6 +560,11 @@ export function PatientsPage() {
         open={!!cardToCardPatient}
         patient={cardToCardPatient}
         onClose={() => setCardToCardPatient(null)}
+      />
+      <CreditChargeModal
+        open={!!creditPatient}
+        patient={creditPatient}
+        onClose={() => setCreditPatient(null)}
       />
       <PatientWalletLedgerModal
         open={!!ledgerPatient}

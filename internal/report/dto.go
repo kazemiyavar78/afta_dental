@@ -2,10 +2,10 @@ package report
 
 // RevenueByOrganizationQuery پارامترهای query گزارش درآمد به تفکیک سازمان.
 type RevenueByOrganizationQuery struct {
-	FromDate                    string `form:"from_date" binding:"required"`
-	ToDate                      string `form:"to_date" binding:"required"`
-	FromTime                    string `form:"from_time"`
-	ToTime                      string `form:"to_time"`
+	FromDate                     string `form:"from_date" binding:"required"`
+	ToDate                       string `form:"to_date" binding:"required"`
+	FromTime                     string `form:"from_time"`
+	ToTime                       string `form:"to_time"`
 	BaseOrganizationIDs          string `form:"base_organization_ids"`
 	SupplementaryOrganizationIDs string `form:"supplementary_organization_ids"`
 	DetailSupplementary          bool   `form:"detail_supplementary"`
@@ -32,29 +32,29 @@ type RevenueByOrganizationRow struct {
 type RevenueByOrganizationResponse struct {
 	Rows    []RevenueByOrganizationRow `json:"rows"`
 	Summary RevenueByOrganizationRow   `json:"summary"`
-	Meta    RevenueByOrganizationMeta    `json:"meta"`
+	Meta    RevenueByOrganizationMeta  `json:"meta"`
 }
 
 // RevenueByOrganizationMeta اطلاعات فیلتر اعمال‌شده برای نمایش در چاپ.
 type RevenueByOrganizationMeta struct {
-	FromDate                    string `json:"from_date"`
-	ToDate                      string `json:"to_date"`
-	FromTime                    string `json:"from_time"`
-	ToTime                      string `json:"to_time"`
-	DetailSupplementary         bool   `json:"detail_supplementary"`
-	HasSupplementaryFilter      bool   `json:"has_supplementary_filter"`
-	OnlySupplementary           bool   `json:"only_supplementary"`
-	FreeOrganizationName        string `json:"free_organization_name,omitempty"`
+	FromDate               string `json:"from_date"`
+	ToDate                 string `json:"to_date"`
+	FromTime               string `json:"from_time"`
+	ToTime                 string `json:"to_time"`
+	DetailSupplementary    bool   `json:"detail_supplementary"`
+	HasSupplementaryFilter bool   `json:"has_supplementary_filter"`
+	OnlySupplementary      bool   `json:"only_supplementary"`
+	FreeOrganizationName   string `json:"free_organization_name,omitempty"`
 }
 
 // DoctorPerformanceBaseQuery فیلترهای مشترک گزارش کارکرد پزشکان.
 type DoctorPerformanceBaseQuery struct {
-	FromDate         string `form:"from_date" binding:"required"`
-	ToDate           string `form:"to_date" binding:"required"`
-	FromTime         string `form:"from_time"`
-	ToTime           string `form:"to_time"`
-	DoctorIDs        string `form:"doctor_ids" binding:"required"`
-	SeparateDoctors  bool   `form:"separate_doctors"`
+	FromDate        string `form:"from_date" binding:"required"`
+	ToDate          string `form:"to_date" binding:"required"`
+	FromTime        string `form:"from_time"`
+	ToTime          string `form:"to_time"`
+	DoctorIDs       string `form:"doctor_ids" binding:"required"`
+	SeparateDoctors bool   `form:"separate_doctors"`
 }
 
 // DoctorPerformanceByOrganizationQuery پارامترهای گزارش کارکرد پزشکان به تفکیک سازمان.
@@ -160,26 +160,26 @@ type DoctorPerformancePatientRow struct {
 
 // DoctorPerformanceOrganizationSection بخش گزارش به تفکیک سازمان برای یک پزشک.
 type DoctorPerformanceOrganizationSection struct {
-	DoctorID   uint                               `json:"doctor_id"`
-	DoctorName string                             `json:"doctor_name"`
+	DoctorID   uint                                 `json:"doctor_id"`
+	DoctorName string                               `json:"doctor_name"`
 	Rows       []DoctorPerformanceByOrganizationRow `json:"rows"`
-	Summary    DoctorPerformanceSummaryRow        `json:"summary"`
+	Summary    DoctorPerformanceSummaryRow          `json:"summary"`
 }
 
 // DoctorPerformanceServiceSection بخش گزارش به تفکیک خدمت برای یک پزشک.
 type DoctorPerformanceServiceSection struct {
-	DoctorID   uint                          `json:"doctor_id"`
-	DoctorName string                        `json:"doctor_name"`
+	DoctorID   uint                            `json:"doctor_id"`
+	DoctorName string                          `json:"doctor_name"`
 	Rows       []DoctorPerformanceByServiceRow `json:"rows"`
 	Summary    DoctorPerformanceSummaryRow     `json:"summary"`
 }
 
 // DoctorPerformancePatientSection بخش لیست بیماران برای یک پزشک.
 type DoctorPerformancePatientSection struct {
-	DoctorID   uint                            `json:"doctor_id"`
-	DoctorName string                          `json:"doctor_name"`
-	Rows       []DoctorPerformancePatientRow   `json:"rows"`
-	Summary    DoctorPerformanceSummaryRow     `json:"summary"`
+	DoctorID   uint                          `json:"doctor_id"`
+	DoctorName string                        `json:"doctor_name"`
+	Rows       []DoctorPerformancePatientRow `json:"rows"`
+	Summary    DoctorPerformanceSummaryRow   `json:"summary"`
 }
 
 // DoctorPerformanceMeta اطلاعات فیلتر اعمال‌شده برای چاپ گزارش کارکرد پزشکان.
@@ -201,9 +201,9 @@ type DoctorPerformanceMeta struct {
 // DoctorPerformanceByOrganizationResponse خروجی گزارش کارکرد به تفکیک سازمان.
 type DoctorPerformanceByOrganizationResponse struct {
 	Rows     []DoctorPerformanceByOrganizationRow   `json:"rows"`
-	Summary  DoctorPerformanceSummaryRow          `json:"summary"`
+	Summary  DoctorPerformanceSummaryRow            `json:"summary"`
 	Sections []DoctorPerformanceOrganizationSection `json:"sections,omitempty"`
-	Meta     DoctorPerformanceMeta                `json:"meta"`
+	Meta     DoctorPerformanceMeta                  `json:"meta"`
 }
 
 // DoctorPerformanceByServiceResponse خروجی گزارش کارکرد به تفکیک خدمت.
@@ -216,20 +216,20 @@ type DoctorPerformanceByServiceResponse struct {
 
 // DoctorPerformancePatientListResponse خروجی لیست بیماران پزشکان.
 type DoctorPerformancePatientListResponse struct {
-	Rows     []DoctorPerformancePatientRow   `json:"rows"`
-	Summary  DoctorPerformanceSummaryRow     `json:"summary"`
+	Rows     []DoctorPerformancePatientRow     `json:"rows"`
+	Summary  DoctorPerformanceSummaryRow       `json:"summary"`
 	Sections []DoctorPerformancePatientSection `json:"sections,omitempty"`
-	Meta     DoctorPerformanceMeta           `json:"meta"`
+	Meta     DoctorPerformanceMeta             `json:"meta"`
 }
 
 // UserPerformanceBaseQuery فیلترهای مشترک گزارش کارکرد کاربران.
 type UserPerformanceBaseQuery struct {
-	FromDate           string `form:"from_date" binding:"required"`
-	ToDate             string `form:"to_date" binding:"required"`
-	FromTime           string `form:"from_time"`
-	ToTime             string `form:"to_time"`
-	UserIDs            string `form:"user_ids" binding:"required"`
-	SeparateByPatient  bool   `form:"separate_by_patient"`
+	FromDate          string `form:"from_date" binding:"required"`
+	ToDate            string `form:"to_date" binding:"required"`
+	FromTime          string `form:"from_time"`
+	ToTime            string `form:"to_time"`
+	UserIDs           string `form:"user_ids" binding:"required"`
+	SeparateByPatient bool   `form:"separate_by_patient"`
 }
 
 // UserPerformanceByReceptionQuery پارامترهای گزارش کارکرد بر اساس پذیرش.
@@ -244,13 +244,13 @@ type UserPerformanceByTransactionQuery struct {
 
 // UserPerformanceMeta متادیتای چاپ گزارش کارکرد کاربران.
 type UserPerformanceMeta struct {
-	ReportType          string   `json:"report_type"`
-	FromDate            string   `json:"from_date"`
-	ToDate              string   `json:"to_date"`
-	FromTime            string   `json:"from_time"`
-	ToTime              string   `json:"to_time"`
-	UserNames           []string `json:"user_names"`
-	SeparateByPatient   bool     `json:"separate_by_patient,omitempty"`
+	ReportType        string   `json:"report_type"`
+	FromDate          string   `json:"from_date"`
+	ToDate            string   `json:"to_date"`
+	FromTime          string   `json:"from_time"`
+	ToTime            string   `json:"to_time"`
+	UserNames         []string `json:"user_names"`
+	SeparateByPatient bool     `json:"separate_by_patient,omitempty"`
 }
 
 // UserPerformanceReceptionRow سطر تجمیعی کارکرد کاربر بر اساس پذیرش.
@@ -282,13 +282,13 @@ type UserPerformanceReceptionDetailRow struct {
 
 // UserPerformanceTransactionRow سطر تجمیعی کارکرد کاربر بر اساس تراکنش مالی.
 type UserPerformanceTransactionRow struct {
-	UserID              uint   `json:"user_id"`
-	UserName            string `json:"user_name"`
-	TotalReceived       int64  `json:"total_received"`
-	TotalPaid           int64  `json:"total_paid"`
-	ReceivedTxCount     int64  `json:"received_tx_count"`
-	PaidTxCount         int64  `json:"paid_tx_count"`
-	TotalTxCount        int64  `json:"total_tx_count"`
+	UserID          uint   `json:"user_id"`
+	UserName        string `json:"user_name"`
+	TotalReceived   int64  `json:"total_received"`
+	TotalPaid       int64  `json:"total_paid"`
+	ReceivedTxCount int64  `json:"received_tx_count"`
+	PaidTxCount     int64  `json:"paid_tx_count"`
+	TotalTxCount    int64  `json:"total_tx_count"`
 }
 
 // UserPerformanceTransactionDetailRow سطر ریز تراکنش مالی کاربر.
@@ -345,6 +345,53 @@ type UserPerformanceByReceptionResponse struct {
 	Summary  UserPerformanceReceptionSummary   `json:"summary"`
 	Sections []UserPerformanceReceptionSection `json:"sections,omitempty"`
 	Meta     UserPerformanceMeta               `json:"meta"`
+}
+
+// CreditAccountPaymentsQuery پارامترهای گزارش پرداخت‌های حساب اعتباری.
+type CreditAccountPaymentsQuery struct {
+	FromDate        string `form:"from_date" binding:"required"`
+	ToDate          string `form:"to_date" binding:"required"`
+	FromTime        string `form:"from_time"`
+	ToTime          string `form:"to_time"`
+	CreditAccountID uint   `form:"credit_account_id"`
+}
+
+// CreditAccountPaymentRow یک سطر پرداخت از حساب اعتباری.
+type CreditAccountPaymentRow struct {
+	ID                uint   `json:"id"`
+	PaidAt            string `json:"paid_at"`
+	CreditAccountID   uint   `json:"credit_account_id"`
+	CreditAccountName string `json:"credit_account_name"`
+	FileNumber        string `json:"file_number"`
+	PatientName       string `json:"patient_name"`
+	Amount            int64  `json:"amount"`
+	Description       string `json:"description"`
+	PerformedByName   string `json:"performed_by_name"`
+	CreditPaid        bool   `json:"credit_paid"`
+	CreditPaidAt      string `json:"credit_paid_at,omitempty"`
+}
+
+// CreditAccountPaymentsSummary جمع گزارش پرداخت‌های اعتباری.
+type CreditAccountPaymentsSummary struct {
+	Amount   int64  `json:"amount"`
+	RowCount int64  `json:"row_count"`
+	RowLabel string `json:"row_label,omitempty"`
+}
+
+// CreditAccountPaymentsMeta فیلتر اعمال‌شده روی گزارش پرداخت‌های اعتباری.
+type CreditAccountPaymentsMeta struct {
+	FromDate          string `json:"from_date"`
+	ToDate            string `json:"to_date"`
+	FromTime          string `json:"from_time"`
+	ToTime            string `json:"to_time"`
+	CreditAccountName string `json:"credit_account_name"`
+}
+
+// CreditAccountPaymentsResponse خروجی گزارش پرداخت‌های حساب‌های اعتباری.
+type CreditAccountPaymentsResponse struct {
+	Rows    []CreditAccountPaymentRow    `json:"rows"`
+	Summary CreditAccountPaymentsSummary `json:"summary"`
+	Meta    CreditAccountPaymentsMeta    `json:"meta"`
 }
 
 // UserPerformanceByTransactionResponse خروجی گزارش کارکرد بر اساس تراکنش مالی.

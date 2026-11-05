@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
+  Checkbox,
   Col,
   Descriptions,
   Form,
@@ -13,18 +14,21 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { ClearOutlined, DollarOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
+import { ClearOutlined, CreditCardOutlined, DollarOutlined, SearchOutlined, SwapOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataTable } from '@/platform/components/DataTable';
 import { JalaliDatePicker } from '@/platform/components/JalaliDatePicker/JalaliDatePicker';
 import { PermissionGuard } from '@/platform/auth/PermissionGuard';
+import { useAuth } from '@/platform/auth/useAuth';
 import { useApiQuery } from '@/platform/hooks/useApiQuery';
-import { fetchWalletBalance, fetchWalletTransactions } from '@/modules/wallet/api';
+import { useApiMutation } from '@/platform/hooks/useApiMutation';
+import { fetchWalletBalance, fetchWalletTransactions, setCreditChargePaid } from '@/modules/wallet/api';
 import type { WalletTransaction } from '@/modules/wallet/types';
 import type { Patient } from '@/modules/patients/types';
 import { CashAdjustModal } from './CashAdjustModal';
 import { CardToCardAdjustModal } from './CardToCardAdjustModal';
+import { CreditChargeModal } from './CreditChargeModal';
 
 type LedgerFilters = {
   dateFrom: string;
@@ -76,6 +80,8 @@ function paymentMethodLabel(method?: string | null): string {
       return 'چک';
     case 'wallet_credit':
       return 'اعتبار کیف پول';
+    case 'credit_account':
+      return 'کسر از اعتبار';
     default:
       return '—';
   }
@@ -126,6 +132,9 @@ export function PatientWalletLedgerModal({
   const [draft, setDraft] = useState<LedgerFilters>(emptyFilters);
   const [cashOpen, setCashOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
+  const { hasPermission } = useAuth();
+  const canMarkCreditPaid = hasPermission('credit_charge.update');
 
   const fileId = patient?.id;
 
@@ -154,6 +163,14 @@ export function PatientWalletLedgerModal({
       refetchTx();
     }
   }, [open, fileId, refetchBalance, refetchTx]);
+
+  const markPaidMutation = useApiMutation({
+    mutationFn: ({ id, creditPaid }: { id: number; creditPaid: boolean }) => setCreditChargePaid(id, creditPaid),
+    successMessage: 'وضعیت پرداخت به‌روزرسانی شد',
+    onSuccess: () => {
+      refetchTx();
+    },
+  });
 
   const filtered = useMemo(() => {
     return transactions.filter((tx) => {
@@ -209,6 +226,26 @@ export function PatientWalletLedgerModal({
       render: (v: string | null | undefined) => paymentMethodLabel(v),
     },
     {
+      title: 'پرداخت شده',
+      key: 'credit_paid',
+      width: 120,
+      align: 'center',
+      render: (_: unknown, record) => {
+        if (record.payment_method !== 'credit_account') return '—';
+        return (
+          <Checkbox
+            checked={!!record.credit_paid}
+            disabled={!canMarkCreditPaid || markPaidMutation.isPending}
+            onChange={(e) =>
+              markPaidMutation.mutate({ id: record.id, creditPaid: e.target.checked })
+            }
+          >
+            {record.credit_paid ? 'بله' : 'خیر'}
+          </Checkbox>
+        );
+      },
+    },
+    {
       title: 'پذیرش',
       dataIndex: 'reception_id',
       key: 'reception_id',
@@ -257,7 +294,7 @@ export function PatientWalletLedgerModal({
       key: 'refs',
       width: 150,
       render: (_, record) => {
-        const parts = [record.tracking_number, record.counterparty_card, record.bank_name].filter(Boolean);
+        const parts = [record.tracking_number, record.counterparty_card, record.bank_name, record.credit_account_name].filter(Boolean);
         return parts.length ? parts.join(' | ') : ' ';
       },
     },
@@ -321,6 +358,11 @@ export function PatientWalletLedgerModal({
           <PermissionGuard permission="wallet.card_to_card">
             <Button icon={<SwapOutlined />} onClick={() => setCardOpen(true)}>
               کارت‌به‌کارت
+            </Button>
+          </PermissionGuard>
+          <PermissionGuard permission="credit_charge.create">
+            <Button icon={<CreditCardOutlined />} onClick={() => setCreditOpen(true)}>
+              کسر از اعتبار
             </Button>
           </PermissionGuard>
         </Space>
@@ -427,6 +469,15 @@ export function PatientWalletLedgerModal({
             patient={patient}
             onClose={() => {
               setCardOpen(false);
+              refetchBalance();
+              refetchTx();
+            }}
+          />
+          <CreditChargeModal
+            open={creditOpen}
+            patient={patient}
+            onClose={() => {
+              setCreditOpen(false);
               refetchBalance();
               refetchTx();
             }}

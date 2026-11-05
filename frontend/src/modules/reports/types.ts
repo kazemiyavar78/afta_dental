@@ -325,6 +325,53 @@ export type UserPerformanceByReceptionResponse = {
   meta: UserPerformanceMeta;
 };
 
+/** فیلتر گزارش پرداخت‌های حساب اعتباری */
+export type CreditAccountPaymentsFilters = {
+  from_date: string;
+  to_date: string;
+  from_time?: string;
+  to_time?: string;
+  credit_account_id?: number;
+};
+
+/** یک سطر گزارش پرداخت حساب اعتباری */
+export type CreditAccountPaymentRow = {
+  id: number;
+  paid_at: string;
+  credit_account_id: number;
+  credit_account_name: string;
+  file_number: string;
+  patient_name: string;
+  amount: number;
+  description: string;
+  performed_by_name: string;
+  credit_paid: boolean;
+  credit_paid_at?: string;
+};
+
+/** جمع گزارش پرداخت‌های اعتباری */
+export type CreditAccountPaymentsSummary = {
+  amount: number;
+  row_count: number;
+  row_label?: string;
+};
+
+/** متادیتای فیلتر گزارش پرداخت‌های اعتباری */
+export type CreditAccountPaymentsMeta = {
+  from_date: string;
+  to_date: string;
+  from_time: string;
+  to_time: string;
+  credit_account_name: string;
+};
+
+/** پاسخ API گزارش پرداخت‌های حساب اعتباری */
+export type CreditAccountPaymentsResponse = {
+  rows: CreditAccountPaymentRow[];
+  summary: CreditAccountPaymentsSummary;
+  meta: CreditAccountPaymentsMeta;
+};
+
 /** پاسخ API گزارش کارکرد بر اساس تراکنش مالی */
 export type UserPerformanceByTransactionResponse = {
   rows: UserPerformanceTransactionRow[];

@@ -7,6 +7,7 @@ import {
   TeamOutlined,
   MedicineBoxOutlined,
   BankOutlined,
+  CreditCardOutlined,
   DollarOutlined,
   TagsOutlined,
   SettingOutlined,
@@ -58,6 +59,7 @@ export function AppShell({ children }: AppShellProps) {
     { key: '/services', icon: <AppstoreOutlined />, label: 'خدمات', permission: 'services.read' },
     { key: '/fund', icon: <DollarOutlined />, label: 'صندوق', permission: 'fund.read' },
     { key: '/bank-accounts', icon: <BankOutlined />, label: 'حساب‌های بانکی', permission: 'bank_account.read' },
+    { key: '/credit-accounts', icon: <CreditCardOutlined />, label: 'حساب‌های اعتباری', permission: 'credit_account.read' },
     { key: '/special-codes', icon: <KeyOutlined />, label: 'کد خاص', permission: 'special_code.read' },
     { key: '/regulations', icon: <AuditOutlined />, label: 'ضوابط', permission: 'regulation.read' },
     { key: '/tariff', icon: <TagsOutlined />, label: 'تعرفه', permission: 'tariff.read' },
@@ -72,6 +74,12 @@ export function AppShell({ children }: AppShellProps) {
       key: '/reports/user-performance',
       icon: <BarChartOutlined />,
       label: 'کارکرد کاربران',
+      permission: 'reports.read',
+    },
+    {
+      key: '/reports/credit-account-payments',
+      icon: <BarChartOutlined />,
+      label: 'گزارش اعتبارات',
       permission: 'reports.read',
     },
     {

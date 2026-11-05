@@ -8,6 +8,12 @@ import (
 // ErrInsufficientBalance وقتی موجودی کیف پول برای کاهش کافی نباشد.
 var ErrInsufficientBalance = errors.New("insufficient wallet balance")
 
+// ErrCreditLimitExceeded وقتی مبلغ درخواستی از مانده سقف حساب اعتباری بیشتر باشد.
+var ErrCreditLimitExceeded = errors.New("credit limit exceeded")
+
+// ErrCreditAccountInactive وقتی حساب اعتباری غیرفعال باشد.
+var ErrCreditAccountInactive = errors.New("credit account inactive")
+
 // CashAdjustRequest درخواست افزایش/کاهش اعتبار نقدی.
 type CashAdjustRequest struct {
 	FileID      uint   `json:"file_id" binding:"required"`
@@ -71,33 +77,78 @@ type CashFundResponse struct {
 // TransactionResponse پاسخ API تراکنش.
 // PerformedBy شناسه کاربر عامل است؛ 0 یعنی سیستم. PerformedByName نام نمایشی عامل است.
 type TransactionResponse struct {
-	ID               uint      `json:"id"`
-	FileID           uint      `json:"file_id"`
-	ReceptionID      *uint     `json:"reception_id,omitempty"`
-	Amount           int64     `json:"amount"`
-	Category         string    `json:"category"`
-	Action           string    `json:"action"`
-	PaymentMethod    *string   `json:"payment_method,omitempty"`
-	Description      string    `json:"description"`
-	BankAccountID    *uint     `json:"bank_account_id,omitempty"`
-	CounterpartyCard *string   `json:"counterparty_card,omitempty"`
-	TrackingNumber   *string   `json:"tracking_number,omitempty"`
-	BankName         *string   `json:"bank_name,omitempty"`
-	PaidAt           *string   `json:"paid_at,omitempty"`
-	PerformedBy      uint      `json:"performed_by"`
-	PerformedByName  string    `json:"performed_by_name"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                uint      `json:"id"`
+	FileID            uint      `json:"file_id"`
+	ReceptionID       *uint     `json:"reception_id,omitempty"`
+	Amount            int64     `json:"amount"`
+	Category          string    `json:"category"`
+	Action            string    `json:"action"`
+	PaymentMethod     *string   `json:"payment_method,omitempty"`
+	Description       string    `json:"description"`
+	BankAccountID     *uint     `json:"bank_account_id,omitempty"`
+	CounterpartyCard  *string   `json:"counterparty_card,omitempty"`
+	TrackingNumber    *string   `json:"tracking_number,omitempty"`
+	BankName          *string   `json:"bank_name,omitempty"`
+	CreditAccountID   *uint     `json:"credit_account_id,omitempty"`
+	CreditAccountName *string   `json:"credit_account_name,omitempty"`
+	CreditPaid        bool      `json:"credit_paid"`
+	CreditPaidAt      *string   `json:"credit_paid_at,omitempty"`
+	PaidAt            *string   `json:"paid_at,omitempty"`
+	PerformedBy       uint      `json:"performed_by"`
+	PerformedByName   string    `json:"performed_by_name"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+// SetCreditPaidRequest درخواست تیک پرداخت‌شدن تراکنش کسر از اعتبار.
+type SetCreditPaidRequest struct {
+	CreditPaid bool `json:"credit_paid"`
+}
+
+// CreditChargeRequest درخواست شارژ پرونده از محل کسر حساب اعتباری.
+type CreditChargeRequest struct {
+	FileID          uint   `json:"file_id" binding:"required"`
+	CreditAccountID uint   `json:"credit_account_id" binding:"required"`
+	Amount          int64  `json:"amount" binding:"required,gt=0"`
+	Description     string `json:"description"`
+}
+
+// CreateCreditAccountRequest درخواست ایجاد حساب اعتباری.
+type CreateCreditAccountRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description"`
+	CreditLimit int64  `json:"credit_limit" binding:"required,gt=0"`
+	IsActive    bool   `json:"is_active"`
+}
+
+// UpdateCreditAccountRequest درخواست ویرایش حساب اعتباری.
+type UpdateCreditAccountRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description"`
+	CreditLimit int64  `json:"credit_limit" binding:"required,gt=0"`
+	IsActive    bool   `json:"is_active"`
+}
+
+// CreditAccountResponse پاسخ API حساب اعتباری.
+type CreditAccountResponse struct {
+	ID              uint   `json:"id"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	CreditLimit     int64  `json:"credit_limit"`
+	UsedAmount      int64  `json:"used_amount"`
+	Remaining       int64  `json:"remaining"`
+	IsActive        bool   `json:"is_active"`
+	HasTransactions bool   `json:"has_transactions"`
 }
 
 // BankAccountResponse پاسخ API حساب بانکی.
 type BankAccountResponse struct {
-	ID            uint   `json:"id"`
-	BankName      string `json:"bank_name"`
-	ShebaNumber   string `json:"sheba_number"`
-	AccountNumber string `json:"account_number"`
-	CardNumber    string `json:"card_number"`
-	AccountName   string `json:"account_name"`
-	HasTransactions bool `json:"has_transactions"`
+	ID              uint   `json:"id"`
+	BankName        string `json:"bank_name"`
+	ShebaNumber     string `json:"sheba_number"`
+	AccountNumber   string `json:"account_number"`
+	CardNumber      string `json:"card_number"`
+	AccountName     string `json:"account_name"`
+	HasTransactions bool   `json:"has_transactions"`
 }
 
 // ReceptionServiceLine خلاصه خدمت برای ثبت در توضیح تراکنش پذیرش.

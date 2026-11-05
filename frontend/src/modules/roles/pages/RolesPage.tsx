@@ -29,6 +29,8 @@ const emptyFormValues: RoleFormValues = {
 /** برچسب فارسی ماژول‌ها بر اساس پیشوند نام مجوز */
 const MODULE_LABELS: Record<string, string> = {
   bank_account: 'حساب بانکی',
+  credit_account: 'حساب اعتباری',
+  credit_charge: 'پرداخت از اعتبار',
   excluded_services: 'خدمات خارج‌شده',
   fund: 'صندوق',
   logs: 'لاگ‌ها',

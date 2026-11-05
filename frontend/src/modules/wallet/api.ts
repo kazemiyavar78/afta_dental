@@ -6,6 +6,9 @@ import type {
   CardReaderSimulateResponse,
   CardToCardAdjustPayload,
   CashAdjustPayload,
+  CreditAccount,
+  CreditAccountPayload,
+  CreditChargePayload,
   WalletBalance,
   WalletTransaction,
 } from './types';
@@ -67,4 +70,51 @@ export async function updateBankAccount(id: number, payload: BankAccountPayload)
 /** حذف حساب بانکی */
 export async function deleteBankAccount(id: number): Promise<void> {
   await httpClient.delete(`/bank-accounts/${id}`);
+}
+
+/** لیست حساب‌های اعتباری */
+export async function fetchCreditAccounts(): Promise<CreditAccount[]> {
+  const { data } = await httpClient.get<CreditAccount[]>('/credit-accounts');
+  return data;
+}
+
+/** لیست حساب‌های اعتباری فعال برای فرم پرداخت */
+export async function fetchActiveCreditAccounts(): Promise<CreditAccount[]> {
+  const { data } = await httpClient.get<CreditAccount[]>('/credit-accounts/active');
+  return data;
+}
+
+/** ایجاد حساب اعتباری */
+export async function createCreditAccount(payload: CreditAccountPayload): Promise<CreditAccount> {
+  const { data } = await httpClient.post<CreditAccount>('/credit-accounts', payload);
+  return data;
+}
+
+/** ویرایش حساب اعتباری */
+export async function updateCreditAccount(id: number, payload: CreditAccountPayload): Promise<CreditAccount> {
+  const { data } = await httpClient.put<CreditAccount>(`/credit-accounts/${id}`, payload);
+  return data;
+}
+
+/** حذف حساب اعتباری */
+export async function deleteCreditAccount(id: number): Promise<void> {
+  await httpClient.delete(`/credit-accounts/${id}`);
+}
+
+/** شارژ پرونده مالی از محل کسر حساب اعتباری */
+export async function chargeFromCreditAccount(payload: CreditChargePayload): Promise<WalletTransaction> {
+  const { data } = await httpClient.post<WalletTransaction>('/wallet/credit-charge', payload);
+  return data;
+}
+
+/**
+ * وضعیت پرداخت‌شدن تراکنش کسر از اعتبار را ثبت یا برمی‌دارد.
+ * @param id شناسه تراکنش
+ * @param creditPaid true یعنی مبلغ پرداخت شده است
+ */
+export async function setCreditChargePaid(id: number, creditPaid: boolean): Promise<WalletTransaction> {
+  const { data } = await httpClient.patch<WalletTransaction>(`/wallet/transactions/${id}/credit-paid`, {
+    credit_paid: creditPaid,
+  });
+  return data;
 }

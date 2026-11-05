@@ -43,6 +43,12 @@ var defaultPermissions = map[string]string{
 	"bank_account.create":          "ایجاد حساب بانکی",
 	"bank_account.update":          "بروزرسانی حساب بانکی",
 	"bank_account.delete":          "حذف حساب بانکی",
+	"credit_account.read":          "خواندن حسابهای اعتباری",
+	"credit_account.create":        "ایجاد حساب اعتباری",
+	"credit_account.update":        "بروزرسانی حساب اعتباری",
+	"credit_account.delete":        "حذف حساب اعتباری",
+	"credit_charge.create":         "ایجاد پرداخت از طریق کسر از اعتبار",
+	"credit_charge.update":         "ثبت پرداخت شدن کسر از اعتبار",
 	"tariff.read":                  "خواندن تعرفهها",
 	"tariff.create":                "ایجاد تعرفهها",
 	"tariff.update":                "بروزرسانی تعرفهها",
@@ -59,8 +65,8 @@ var defaultPermissions = map[string]string{
 	"logs.read":                    "خواندن لاگها",
 	"reports.read":                 "خواندن گزارشها",
 	"excluded_services.read":       "خواندن خدمات خارج شده",
-	"excluded_services.add":     "اضافه کردن خدمات خارج شده",
-	"excluded_services.remove": "حذف خدمات خارج شده",
+	"excluded_services.add":        "اضافه کردن خدمات خارج شده",
+	"excluded_services.remove":     "حذف خدمات خارج شده",
 }
 
 // DefaultPermissionCatalog کپی از کاتالوگ ثابت مجوزهای سیستم را برمی‌گرداند.

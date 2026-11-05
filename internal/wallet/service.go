@@ -268,6 +268,144 @@ func (s *Service) ChargeFromCardReader(req CardReaderChargeRequest, actorID int,
 	return ptrTransactionResponse(created), nil
 }
 
+// ChargeFromCreditAccount مبلغ را از سقف حساب اعتباری کسر و کیف پول پرونده را شارژ می‌کند.
+// ورودی: درخواست شارژ، شناسه کاربر عامل و آی‌پی. خروجی: تراکنش ثبت‌شده یا خطا.
+func (s *Service) ChargeFromCreditAccount(req CreditChargeRequest, actorID int, ip string) (*TransactionResponse, error) {
+	if req.Amount <= 0 {
+		return nil, apperror.New("BAD_REQUEST", "مبلغ باید بزرگ‌تر از صفر باشد.", "invalid amount", 400)
+	}
+
+	account, err := s.repo.FindCreditAccountByID(req.CreditAccountID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperror.New("NOT_FOUND", "حساب اعتباری یافت نشد.", "credit account not found", 404)
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن حساب اعتباری.", err.Error(), 500)
+	}
+	if !VerifyCreditAccountIntegrity(s.signer, account) {
+		return nil, apperror.ErrIntegrity
+	}
+	if !account.IsActive {
+		return nil, apperror.New("BAD_REQUEST", "حساب اعتباری غیرفعال است.", "credit account inactive", 400)
+	}
+
+	method := MethodCreditAccount
+	desc := strings.TrimSpace(req.Description)
+	if desc == "" {
+		desc = fmt.Sprintf("شارژ از حساب اعتباری %s", account.Name)
+	}
+	accountName := account.Name
+	accountID := account.ID
+	paidAt := time.Now().UTC()
+
+	var created *Transaction
+	err = s.repo.WithTx(func(txRepo Repository) error {
+		ok, cErr := txRepo.TryConsumeCredit(nil, accountID, req.Amount)
+		if cErr != nil {
+			return cErr
+		}
+		if !ok {
+			return s.creditConsumeFailure(txRepo, accountID, req.Amount)
+		}
+		current, fErr := txRepo.FindCreditAccountByID(accountID)
+		if fErr != nil {
+			return fErr
+		}
+		current.IntegrityHash = SignCreditAccountIntegrityHash(s.signer, current)
+		if uErr := txRepo.UpdateCreditAccount(current); uErr != nil {
+			return uErr
+		}
+		if aErr := txRepo.AdjustPatientWalletBalance(nil, req.FileID, req.Amount); aErr != nil {
+			return aErr
+		}
+		t := &Transaction{
+			FileID:            req.FileID,
+			Amount:            req.Amount,
+			Category:          CategoryWallet,
+			Action:            ActionCharge,
+			PaymentMethod:     &method,
+			Description:       desc,
+			CreditAccountID:   &accountID,
+			CreditAccountName: &accountName,
+			PaidAt:            &paidAt,
+			PerformedBy:       uint(maxInt(actorID, 0)),
+		}
+		if tErr := txRepo.CreateTransaction(nil, t); tErr != nil {
+			return tErr
+		}
+		t.IntegrityHash = SignTransactionIntegrityHash(s.signer, t)
+		if tErr := txRepo.UpdateTransaction(nil, t); tErr != nil {
+			return tErr
+		}
+		created = t
+		return nil
+	})
+	if err != nil {
+		return nil, mapWalletErr(err)
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("شارژ از حساب اعتباری %d پرونده %d مبلغ %d", accountID, req.FileID, req.Amount))
+	return ptrTransactionResponse(created), nil
+}
+
+// SetCreditTransactionPaid وضعیت پرداخت‌شدن یک تراکنش کسر از اعتبار را ثبت یا برمی‌دارد.
+// ورودی: شناسه تراکنش، پرداخت‌شده بودن، شناسه کاربر عامل و آی‌پی. خروجی: تراکنش به‌روزشده یا خطا.
+func (s *Service) SetCreditTransactionPaid(id uint, paid bool, actorID int, ip string) (*TransactionResponse, error) {
+	t, err := s.repo.FindTransactionByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن تراکنش.", err.Error(), 500)
+	}
+	if !VerifyTransactionIntegrity(s.signer, t) {
+		return nil, apperror.ErrIntegrity
+	}
+	if t.PaymentMethod == nil || *t.PaymentMethod != MethodCreditAccount || t.Action != ActionCharge {
+		return nil, apperror.New("BAD_REQUEST", "فقط تراکنش کسر از اعتبار قابل تیک پرداخت است.", "not a credit charge", 400)
+	}
+
+	t.CreditPaid = paid
+	if paid {
+		if t.CreditPaidAt == nil {
+			now := time.Now().UTC()
+			t.CreditPaidAt = &now
+		}
+	} else {
+		t.CreditPaidAt = nil
+	}
+	t.IntegrityHash = SignTransactionIntegrityHash(s.signer, t)
+	if err := s.repo.UpdateTransactionCreditPaid(t); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ثبت وضعیت پرداخت.", err.Error(), 500)
+	}
+	state := "پرداخت‌نشده"
+	if paid {
+		state = "پرداخت‌شده"
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("وضعیت پرداخت تراکنش اعتباری %d: %s", id, state))
+	return ptrTransactionResponse(t), nil
+}
+
+// creditConsumeFailure دلیل ناموفق بودن کسر از سقف اعتبار را به خطای دامنه تبدیل می‌کند.
+// ورودی: ریپازیتوری تراکنش، شناسه حساب و مبلغ. خروجی: خطای دامنه.
+func (s *Service) creditConsumeFailure(txRepo Repository, id uint, amount int64) error {
+	current, err := txRepo.FindCreditAccountByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return apperror.New("NOT_FOUND", "حساب اعتباری یافت نشد.", "credit account not found", 404)
+	}
+	if err != nil {
+		return err
+	}
+	if !current.IsActive {
+		return ErrCreditAccountInactive
+	}
+	if current.UsedAmount+amount > current.CreditLimit {
+		return ErrCreditLimitExceeded
+	}
+	return apperror.New("CONFLICT", "کسر از حساب اعتباری انجام نشد.", "credit consume failed", 409)
+}
+
 // RecordReceptionServiceAdded هنگام ذخیره پذیرش، مبلغ صندوق را با service_added ثبت می‌کند.
 func (s *Service) RecordReceptionServiceAdded(
 	fileID uint,
@@ -608,6 +746,170 @@ func (s *Service) GetBankAccount(id uint) (*BankAccountResponse, error) {
 	}, nil
 }
 
+// CreateCreditAccount حساب اعتباری جدید ایجاد می‌کند.
+// ورودی: درخواست ایجاد، شناسه کاربر عامل و آی‌پی. خروجی: حساب ایجادشده یا خطا.
+func (s *Service) CreateCreditAccount(req CreateCreditAccountRequest, actorID int, ip string) (*CreditAccountResponse, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, apperror.New("BAD_REQUEST", "نام اعتبار الزامی است.", "name required", 400)
+	}
+	if req.CreditLimit <= 0 {
+		return nil, apperror.New("BAD_REQUEST", "سقف اعتبار باید بزرگ‌تر از صفر باشد.", "invalid credit limit", 400)
+	}
+	a := &CreditAccount{
+		Name:        name,
+		Description: strings.TrimSpace(req.Description),
+		CreditLimit: req.CreditLimit,
+		UsedAmount:  0,
+		IsActive:    req.IsActive,
+	}
+	if err := s.repo.CreateCreditAccount(a); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ایجاد حساب اعتباری.", err.Error(), 500)
+	}
+	a.IntegrityHash = SignCreditAccountIntegrityHash(s.signer, a)
+	if err := s.repo.UpdateCreditAccount(a); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ذخیره هش حساب اعتباری.", err.Error(), 500)
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("ایجاد حساب اعتباری %s", a.Name))
+	resp := toCreditAccountResponse(a)
+	return &resp, nil
+}
+
+// UpdateCreditAccount حساب اعتباری را ویرایش می‌کند.
+// ورودی: شناسه، درخواست ویرایش، شناسه کاربر عامل و آی‌پی. خروجی: حساب ویرایش‌شده یا خطا.
+func (s *Service) UpdateCreditAccount(id uint, req UpdateCreditAccountRequest, actorID int, ip string) (*CreditAccountResponse, error) {
+	a, err := s.repo.FindCreditAccountByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن حساب اعتباری.", err.Error(), 500)
+	}
+	if !VerifyCreditAccountIntegrity(s.signer, a) {
+		return nil, apperror.ErrIntegrity
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, apperror.New("BAD_REQUEST", "نام اعتبار الزامی است.", "name required", 400)
+	}
+	if req.CreditLimit <= 0 {
+		return nil, apperror.New("BAD_REQUEST", "سقف اعتبار باید بزرگ‌تر از صفر باشد.", "invalid credit limit", 400)
+	}
+	if req.CreditLimit < a.UsedAmount {
+		return nil, apperror.New("BAD_REQUEST", "سقف اعتبار نمی‌تواند کمتر از مبلغ استفاده‌شده باشد.", "credit limit below used amount", 400)
+	}
+	a.Name = name
+	a.Description = strings.TrimSpace(req.Description)
+	a.CreditLimit = req.CreditLimit
+	a.IsActive = req.IsActive
+	a.IntegrityHash = SignCreditAccountIntegrityHash(s.signer, a)
+	if err := s.repo.UpdateCreditAccount(a); err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در ویرایش حساب اعتباری.", err.Error(), 500)
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("ویرایش حساب اعتباری %d", id))
+	resp := toCreditAccountResponse(a)
+	return &resp, nil
+}
+
+// DeleteCreditAccount حساب اعتباری بدون پرداخت را حذف می‌کند.
+// ورودی: شناسه، شناسه کاربر عامل و آی‌پی. خروجی: خطا در صورت عدم امکان حذف.
+func (s *Service) DeleteCreditAccount(id uint, actorID int, ip string) error {
+	a, err := s.repo.FindCreditAccountByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return apperror.ErrNotFound
+	}
+	if err != nil {
+		return apperror.New("DB_ERROR", "خطا در خواندن حساب اعتباری.", err.Error(), 500)
+	}
+	if !VerifyCreditAccountIntegrity(s.signer, a) {
+		return apperror.ErrIntegrity
+	}
+	if a.UsedAmount > 0 {
+		return apperror.New("CONFLICT", "حساب اعتباری دارای پرداخت است و قابل حذف نیست.", "credit account has payments", 409)
+	}
+	if err := s.repo.DeleteCreditAccount(id); err != nil {
+		return apperror.New("DB_ERROR", "خطا در حذف حساب اعتباری.", err.Error(), 500)
+	}
+	_ = s.audit.LogEvent(&actorID, ip, audit.EventUserDataChange,
+		fmt.Sprintf("حذف حساب اعتباری %d", id))
+	return nil
+}
+
+// ListCreditAccounts لیست حساب‌های اعتباری را برمی‌گرداند.
+// خروجی: لیست حساب‌ها یا خطا.
+func (s *Service) ListCreditAccounts() ([]CreditAccountResponse, error) {
+	return s.listCreditAccounts(false)
+}
+
+// ListActiveCreditAccounts فقط حساب‌های اعتباری فعال را برمی‌گرداند.
+// خروجی: لیست حساب‌های فعال یا خطا.
+func (s *Service) ListActiveCreditAccounts() ([]CreditAccountResponse, error) {
+	return s.listCreditAccounts(true)
+}
+
+// listCreditAccounts حساب‌های اعتباری را می‌خواند و یکپارچگی هر رکورد را بررسی می‌کند.
+// ورودی: activeOnly برای محدود کردن به حساب‌های فعال. خروجی: لیست پاسخ یا خطا.
+func (s *Service) listCreditAccounts(activeOnly bool) ([]CreditAccountResponse, error) {
+	var (
+		list []CreditAccount
+		err  error
+	)
+	if activeOnly {
+		list, err = s.repo.ListActiveCreditAccounts()
+	} else {
+		list, err = s.repo.ListCreditAccounts()
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن حساب‌های اعتباری.", err.Error(), 500)
+	}
+	out := make([]CreditAccountResponse, 0, len(list))
+	for i := range list {
+		if !VerifyCreditAccountIntegrity(s.signer, &list[i]) {
+			return nil, apperror.ErrIntegrity
+		}
+		out = append(out, toCreditAccountResponse(&list[i]))
+	}
+	return out, nil
+}
+
+// GetCreditAccount یک حساب اعتباری را برمی‌گرداند.
+// ورودی: شناسه. خروجی: حساب یا خطا.
+func (s *Service) GetCreditAccount(id uint) (*CreditAccountResponse, error) {
+	a, err := s.repo.FindCreditAccountByID(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperror.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperror.New("DB_ERROR", "خطا در خواندن حساب اعتباری.", err.Error(), 500)
+	}
+	if !VerifyCreditAccountIntegrity(s.signer, a) {
+		return nil, apperror.ErrIntegrity
+	}
+	resp := toCreditAccountResponse(a)
+	return &resp, nil
+}
+
+// toCreditAccountResponse مدل حساب اعتباری را به پاسخ API تبدیل می‌کند.
+// ورودی: حساب. خروجی: DTO پاسخ شامل مانده سقف.
+func toCreditAccountResponse(a *CreditAccount) CreditAccountResponse {
+	remaining := a.CreditLimit - a.UsedAmount
+	if remaining < 0 {
+		remaining = 0
+	}
+	return CreditAccountResponse{
+		ID:              a.ID,
+		Name:            a.Name,
+		Description:     a.Description,
+		CreditLimit:     a.CreditLimit,
+		UsedAmount:      a.UsedAmount,
+		Remaining:       remaining,
+		IsActive:        a.IsActive,
+		HasTransactions: a.UsedAmount > 0,
+	}
+}
+
 // buildServicesDescription توضیح تراکنش از لیست خدمات می‌سازد.
 func buildServicesDescription(services []ReceptionServiceLine, verb string) string {
 	var b strings.Builder
@@ -625,6 +927,12 @@ func buildServicesDescription(services []ReceptionServiceLine, verb string) stri
 func mapWalletErr(err error) error {
 	if errors.Is(err, ErrInsufficientBalance) {
 		return apperror.New("INSUFFICIENT_BALANCE", "موجودی کیف پول کافی نیست؛ بدهکار شدن بیمار مجاز نیست.", err.Error(), 400)
+	}
+	if errors.Is(err, ErrCreditLimitExceeded) {
+		return apperror.New("CREDIT_LIMIT", "مانده سقف حساب اعتباری برای این مبلغ کافی نیست.", err.Error(), 400)
+	}
+	if errors.Is(err, ErrCreditAccountInactive) {
+		return apperror.New("BAD_REQUEST", "حساب اعتباری غیرفعال است.", err.Error(), 400)
 	}
 	if ae, ok := err.(*apperror.AppError); ok {
 		return ae
@@ -645,6 +953,11 @@ func toTransactionResponse(t *Transaction, performedByName string) TransactionRe
 		v := t.PaidAt.UTC().Format(time.RFC3339)
 		paidAt = &v
 	}
+	var creditPaidAt *string
+	if t.CreditPaidAt != nil {
+		v := t.CreditPaidAt.UTC().Format(time.RFC3339)
+		creditPaidAt = &v
+	}
 	name := performedByName
 	if name == "" {
 		if t.PerformedBy == 0 {
@@ -659,6 +972,8 @@ func toTransactionResponse(t *Transaction, performedByName string) TransactionRe
 		PaymentMethod: method, Description: t.Description,
 		BankAccountID: t.BankAccountID, CounterpartyCard: t.CounterpartyCard,
 		TrackingNumber: t.TrackingNumber, BankName: t.BankName,
+		CreditAccountID: t.CreditAccountID, CreditAccountName: t.CreditAccountName,
+		CreditPaid: t.CreditPaid, CreditPaidAt: creditPaidAt,
 		PaidAt: paidAt, PerformedBy: t.PerformedBy, PerformedByName: name,
 		CreatedAt: t.CreatedAt,
 	}

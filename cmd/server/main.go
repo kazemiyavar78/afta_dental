@@ -30,9 +30,9 @@ import (
 	"github.com/tpdenta/afta-reception/internal/platform/security/logretention"
 	"github.com/tpdenta/afta-reception/internal/platform/security/session"
 	"github.com/tpdenta/afta-reception/internal/platform/security/settings"
-	"github.com/tpdenta/afta-reception/internal/report"
 	"github.com/tpdenta/afta-reception/internal/reception"
 	"github.com/tpdenta/afta-reception/internal/regulation"
+	"github.com/tpdenta/afta-reception/internal/report"
 	"github.com/tpdenta/afta-reception/internal/services"
 	"github.com/tpdenta/afta-reception/internal/specialcode"
 	"github.com/tpdenta/afta-reception/internal/tariff"
@@ -102,6 +102,7 @@ func main() {
 		&wallet.CashFund{},
 		&wallet.PatientWallet{},
 		&wallet.BankAccount{},
+		&wallet.CreditAccount{},
 		&wallet.Transaction{},
 		&settings.SecuritySetting{},
 		&session.Session{},

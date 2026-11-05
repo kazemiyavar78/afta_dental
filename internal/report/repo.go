@@ -74,7 +74,7 @@ type userReceptionDetailAggRow struct {
 	ServiceAmount      int64  `gorm:"column:service_amount"`
 	ServiceTariff      int64  `gorm:"column:service_tariff"`
 	OrganizationShare  int64  `gorm:"column:organization_share"`
-	SupplementaryShare int64 `gorm:"column:supplementary_share"`
+	SupplementaryShare int64  `gorm:"column:supplementary_share"`
 	SubsidyShare       int64  `gorm:"column:subsidy_share"`
 	ServicesReceived   string `gorm:"column:services_received"`
 }
@@ -86,6 +86,23 @@ type userTransactionAggRow struct {
 	ReceivedTxCount int64 `gorm:"column:received_tx_count"`
 	PaidTxCount     int64 `gorm:"column:paid_tx_count"`
 	TotalTxCount    int64 `gorm:"column:total_tx_count"`
+}
+
+// creditAccountPaymentAggRow یک پرداخت کسر از حساب اعتباری برای گزارش.
+type creditAccountPaymentAggRow struct {
+	ID                uint       `gorm:"column:id"`
+	PaidAt            time.Time  `gorm:"column:paid_at"`
+	CreditAccountID   uint       `gorm:"column:credit_account_id"`
+	CreditAccountName string     `gorm:"column:credit_account_name"`
+	FileNumber        string     `gorm:"column:file_number"`
+	PatientName       string     `gorm:"column:patient_name"`
+	Amount            int64      `gorm:"column:amount"`
+	Description       string     `gorm:"column:description"`
+	CreditPaid        bool       `gorm:"column:credit_paid"`
+	CreditPaidAt      *time.Time `gorm:"column:credit_paid_at"`
+	PerformerName     string     `gorm:"column:performer_name"`
+	PerformerFamily   string     `gorm:"column:performer_family"`
+	PerformedBy       uint       `gorm:"column:performed_by"`
 }
 
 // userTransactionDetailAggRow نتیجه ریز تراکنش مالی کاربر.
@@ -101,16 +118,16 @@ type userTransactionDetailAggRow struct {
 
 // revenueByDoctorAggRow نتیجه تجمیع درآمد به تفکیک پزشک.
 type revenueByDoctorAggRow struct {
-	DoctorID         uint    `gorm:"column:doctor_id"`
-	MedicalCode      *string `gorm:"column:medical_code"`
-	DoctorFirstName  string  `gorm:"column:doctor_first_name"`
-	DoctorLastName   string  `gorm:"column:doctor_last_name"`
-	ServiceAmount    int64   `gorm:"column:service_amount"`
-	ServiceTariff    int64   `gorm:"column:service_tariff"`
-	OrganizationShare int64  `gorm:"column:organization_share"`
-	SupplementaryShare int64 `gorm:"column:supplementary_share"`
-	SubsidyShare     int64   `gorm:"column:subsidy_share"`
-	ReceptionCount   int64   `gorm:"column:reception_count"`
+	DoctorID           uint    `gorm:"column:doctor_id"`
+	MedicalCode        *string `gorm:"column:medical_code"`
+	DoctorFirstName    string  `gorm:"column:doctor_first_name"`
+	DoctorLastName     string  `gorm:"column:doctor_last_name"`
+	ServiceAmount      int64   `gorm:"column:service_amount"`
+	ServiceTariff      int64   `gorm:"column:service_tariff"`
+	OrganizationShare  int64   `gorm:"column:organization_share"`
+	SupplementaryShare int64   `gorm:"column:supplementary_share"`
+	SubsidyShare       int64   `gorm:"column:subsidy_share"`
+	ReceptionCount     int64   `gorm:"column:reception_count"`
 }
 
 // Repository اینترفیس دسترسی داده گزارش‌ها.
@@ -159,6 +176,10 @@ type Repository interface {
 		from, to time.Time,
 		userID uint,
 	) ([]userTransactionDetailAggRow, error)
+	// ListCreditAccountPayments پرداخت‌های کسر از اعتبار را در بازه زمانی و در صورت نیاز برای یک حساب برمی‌گرداند.
+	ListCreditAccountPayments(from, to time.Time, creditAccountID uint) ([]creditAccountPaymentAggRow, error)
+	// FindCreditAccountName نام حساب اعتباری را حتی اگر حذف نرم شده باشد برمی‌گرداند.
+	FindCreditAccountName(id uint) (string, error)
 }
 
 type gormRepo struct {
@@ -602,4 +623,56 @@ func (r *gormRepo) FindDoctorNames(ids []uint) (map[uint]string, error) {
 		out[u.ID] = u.Name + " " + u.Family
 	}
 	return out, nil
+}
+
+// ListCreditAccountPayments پرداخت‌های روش «کسر از اعتبار» را با فیلتر تاریخ و نام/شناسه حساب برمی‌گرداند.
+// ورودی: بازه زمانی و شناسه حساب (صفر یعنی همه حساب‌ها). خروجی: سطرهای گزارش یا خطا.
+func (r *gormRepo) ListCreditAccountPayments(from, to time.Time, creditAccountID uint) ([]creditAccountPaymentAggRow, error) {
+	// پرداخت‌های شارژ کیف پول که از حساب اعتباری کسر شده‌اند
+	selectCols := `
+		t.id AS id,
+		COALESCE(t.paid_at, t.created_at) AS paid_at,
+		t.credit_account_id AS credit_account_id,
+		COALESCE(t.credit_account_name, N'') AS credit_account_name,
+		COALESCE(p.file_number, N'') AS file_number,
+		LTRIM(RTRIM(COALESCE(p.first_name, N'') + N' ' + COALESCE(p.last_name, N''))) AS patient_name,
+		t.amount AS amount,
+		COALESCE(t.description, N'') AS description,
+		t.credit_paid AS credit_paid,
+		t.credit_paid_at AS credit_paid_at,
+		COALESCE(u.Name, N'') AS performer_name,
+		COALESCE(u.Family, N'') AS performer_family,
+		t.performed_by AS performed_by
+	`
+	q := r.db.Table("wallet_transactions AS t").
+		Joins("LEFT JOIN patients p ON p.id = t.file_id AND p.deleted_at IS NULL").
+		Joins("LEFT JOIN Users u ON u.ID = t.performed_by").
+		Select(selectCols).
+		Where("t.deleted_at IS NULL").
+		Where("t.category = ?", string(wallet.CategoryWallet)).
+		Where("t.action = ?", string(wallet.ActionCharge)).
+		Where("t.payment_method = ?", string(wallet.MethodCreditAccount)).
+		Where("COALESCE(t.paid_at, t.created_at) >= ? AND COALESCE(t.paid_at, t.created_at) <= ?", from, to)
+	if creditAccountID > 0 {
+		q = q.Where("t.credit_account_id = ?", creditAccountID)
+	}
+	var rows []creditAccountPaymentAggRow
+	err := q.Order("COALESCE(t.paid_at, t.created_at), t.id").Scan(&rows).Error
+	return rows, err
+}
+
+// FindCreditAccountName نام حساب اعتباری را برمی‌گرداند؛ حذف نرم مانع خواندن نام تاریخی نمی‌شود.
+// ورودی: شناسه حساب. خروجی: نام یا خطا (شامل ErrRecordNotFound).
+func (r *gormRepo) FindCreditAccountName(id uint) (string, error) {
+	var row struct {
+		Name string `gorm:"column:name"`
+	}
+	err := r.db.Unscoped().Model(&wallet.CreditAccount{}).
+		Select("name").
+		Where("id = ?", id).
+		Take(&row).Error
+	if err != nil {
+		return "", err
+	}
+	return row.Name, nil
 }

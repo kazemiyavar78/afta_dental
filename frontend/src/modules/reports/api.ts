@@ -12,6 +12,8 @@ import type {
   UserPerformanceByReceptionResponse,
   UserPerformanceByTransactionResponse,
   UserPerformanceFilters,
+  CreditAccountPaymentsFilters,
+  CreditAccountPaymentsResponse,
 } from './types';
 
 /**
@@ -175,6 +177,27 @@ export async function fetchUserPerformanceByTransaction(
   const { data } = await httpClient.get<UserPerformanceByTransactionResponse>(
     '/reports/user-performance/by-transaction',
     { params: buildUserPerformanceParams(filters) },
+  );
+  return data;
+}
+
+/**
+ * دریافت گزارش پرداخت‌های حساب‌های اعتباری در بازه تاریخ و نام حساب.
+ */
+export async function fetchCreditAccountPayments(
+  filters: CreditAccountPaymentsFilters,
+): Promise<CreditAccountPaymentsResponse> {
+  const params: Record<string, string | number> = {
+    from_date: filters.from_date,
+    to_date: filters.to_date,
+  };
+  if (filters.from_time) params.from_time = filters.from_time;
+  if (filters.to_time) params.to_time = filters.to_time;
+  if (filters.credit_account_id) params.credit_account_id = filters.credit_account_id;
+
+  const { data } = await httpClient.get<CreditAccountPaymentsResponse>(
+    '/reports/credit-account-payments',
+    { params },
   );
   return data;
 }

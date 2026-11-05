@@ -522,6 +522,7 @@ func (s *Service) ensureEmptyOperationalRoles() error {
 			"services.read", "fund.read",
 			"wallet.read", "wallet.cash", "wallet.card_to_card", "wallet.card_reader",
 			"bank_account.read",
+			"credit_account.read", "credit_charge.create", "credit_charge.update",
 			"tariff.read", "special_code.read", "regulation.read",
 		},
 		"Doctor": {

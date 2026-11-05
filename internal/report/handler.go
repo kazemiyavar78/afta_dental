@@ -113,6 +113,22 @@ func (h *Handler) UserPerformanceByReception(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// CreditAccountPayments گزارش پرداخت‌های حساب‌های اعتباری را برمی‌گرداند.
+func (h *Handler) CreditAccountPayments(c *gin.Context) {
+	var q CreditAccountPaymentsQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+
+	resp, err := h.service.CreditAccountPayments(q)
+	if err != nil {
+		middleware.WriteError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // UserPerformanceByTransaction گزارش کارکرد کاربران بر اساس تراکنش مالی را برمی‌گرداند.
 func (h *Handler) UserPerformanceByTransaction(c *gin.Context) {
 	var q UserPerformanceByTransactionQuery

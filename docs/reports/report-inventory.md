@@ -7,7 +7,7 @@
 | معیار | مقدار |
 |---|---|
 | **تعداد Report/Print قابل migration** | 4 |
-| **صفحات Report اختصاصی** | 2 (با 3 زیرنوع در Doctor Performance) |
+| **صفحات Report اختصاصی** | 4 (درآمد، کارکرد پزشک، کارکرد کاربر، پرداخت حساب اعتباری) |
 | **PDF** | ✅ `@react-pdf/renderer` |
 | **Excel** | ✅ `xlsx` |
 | **Print** | ✅ HTML engine مرکزی |
@@ -22,6 +22,7 @@
 | گزارش کارکرد — تفکیک سازمان | `modules/reports/pages/DoctorPerformancePage.tsx` | `GET /reports/doctor-performance/by-organization` | ✅ | ✅ | ✅ | A4 | portrait | **Migrated** |
 | گزارش کارکرد — تفکیک خدمت | همان صفحه | `GET /reports/doctor-performance/by-service` | ✅ | ✅ | ✅ | A4 | portrait | **Migrated** |
 | گزارش کارکرد — لیست بیماران | همان صفحه | `GET /reports/doctor-performance/patient-list` | ✅ | ✅ | ✅ | A4 | portrait | **Migrated** |
+| گزارش پرداخت‌های حساب اعتباری | `modules/reports/pages/CreditAccountPaymentsPage.tsx` | `GET /reports/credit-account-payments` | ✅ | ✅ | ✅ | A4 | landscape | **Migrated** |
 | فهرست بیماران | `modules/patients/pages/PatientsPage.tsx` | `GET /patients` | ✅ | ✅ | ✅ | A4 | portrait | **Migrated** |
 | قبض پذیرش | `modules/reception/printReceptionReceipt.ts` | Zustand store | ❌ | ❌ | ✅ | 70mm | portrait | **Partial** |
 
@@ -69,6 +70,7 @@
 | `GET /reports/doctor-performance/by-organization` | `reports.read` | ❌ |
 | `GET /reports/doctor-performance/by-service` | `reports.read` | ❌ |
 | `GET /reports/doctor-performance/patient-list` | `reports.read` | ❌ |
+| `GET /reports/credit-account-payments` | `reports.read` | ❌ — فیلتر از/تا تاریخ و نام حساب |
 
 > **نکته Export:** Backend pagination ندارد؛ Export = همان dataset فیلترشده API.
 

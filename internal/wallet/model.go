@@ -34,11 +34,12 @@ const (
 type PaymentMethod string
 
 const (
-	MethodCash         PaymentMethod = "cash"
-	MethodCardReader   PaymentMethod = "card_reader"
-	MethodCardToCard   PaymentMethod = "card_to_card"
-	MethodCheck        PaymentMethod = "check"
-	MethodWalletCredit PaymentMethod = "wallet_credit"
+	MethodCash          PaymentMethod = "cash"
+	MethodCardReader    PaymentMethod = "card_reader"
+	MethodCardToCard    PaymentMethod = "card_to_card"
+	MethodCheck         PaymentMethod = "check"
+	MethodWalletCredit  PaymentMethod = "wallet_credit"
+	MethodCreditAccount PaymentMethod = "credit_account" // کسر از حساب اعتباری
 )
 
 // CashFund موجودی لحظه‌ای صندوق درآمد کلینیک است (فقط یک رکورد).
@@ -78,28 +79,62 @@ func (BankAccount) TableName() string { return "bank_accounts" }
 // PerformedBy شناسه کاربری است که دریافت/پرداخت را انجام داده؛ مقدار 0 یعنی خود سیستم.
 type Transaction struct {
 	gorm.Model
-	FileID           uint                `json:"file_id" gorm:"column:file_id;index;not null"`
-	ReceptionID      *uint               `json:"reception_id" gorm:"column:reception_id;index"`
-	CheckID          *string             `json:"check_id" gorm:"column:check_id;type:varchar(50)"`
-	Amount           int64               `json:"amount" gorm:"column:amount;not null"`
-	Category         TransactionCategory `json:"category" gorm:"column:category;type:varchar(20);not null"`
-	Action           TransactionAction   `json:"action" gorm:"column:action;type:varchar(30);not null"`
-	PaymentMethod    *PaymentMethod      `json:"payment_method" gorm:"column:payment_method;type:varchar(30)"`
-	Description      string              `json:"description" gorm:"column:description;type:nvarchar(MAX)"`
-	BankAccountID    *uint               `json:"bank_account_id" gorm:"column:bank_account_id;index"`
-	CounterpartyCard *string             `json:"counterparty_card" gorm:"column:counterparty_card;size:20"`
-	TrackingNumber   *string             `json:"tracking_number" gorm:"column:tracking_number;size:100"`
-	BankName         *string             `json:"bank_name" gorm:"column:bank_name;size:100"`
-	PaidAt           *time.Time          `json:"paid_at" gorm:"column:paid_at"`
-	PerformedBy      uint                `json:"performed_by" gorm:"column:performed_by;not null;default:0;index"`
-	IntegrityHash    string              `json:"-" gorm:"column:integrity_hash;size:128;not null"`
+	FileID            uint                `json:"file_id" gorm:"column:file_id;index;not null"`
+	ReceptionID       *uint               `json:"reception_id" gorm:"column:reception_id;index"`
+	CheckID           *string             `json:"check_id" gorm:"column:check_id;type:varchar(50)"`
+	Amount            int64               `json:"amount" gorm:"column:amount;not null"`
+	Category          TransactionCategory `json:"category" gorm:"column:category;type:varchar(20);not null"`
+	Action            TransactionAction   `json:"action" gorm:"column:action;type:varchar(30);not null"`
+	PaymentMethod     *PaymentMethod      `json:"payment_method" gorm:"column:payment_method;type:varchar(30)"`
+	Description       string              `json:"description" gorm:"column:description;type:nvarchar(MAX)"`
+	BankAccountID     *uint               `json:"bank_account_id" gorm:"column:bank_account_id;index"`
+	CounterpartyCard  *string             `json:"counterparty_card" gorm:"column:counterparty_card;size:20"`
+	TrackingNumber    *string             `json:"tracking_number" gorm:"column:tracking_number;size:100"`
+	BankName          *string             `json:"bank_name" gorm:"column:bank_name;size:100"`
+	PaidAt            *time.Time          `json:"paid_at" gorm:"column:paid_at"`
+	PerformedBy       uint                `json:"performed_by" gorm:"column:performed_by;not null;default:0;index"`
+	CreditAccountID   *uint               `json:"credit_account_id" gorm:"column:credit_account_id;index"`
+	CreditAccountName *string             `json:"credit_account_name" gorm:"column:credit_account_name;size:200"`
+	// آیا مبلغ کسر از اعتبار واقعاً پرداخت شده است (فقط برای روش credit_account)
+	CreditPaid    bool       `json:"credit_paid" gorm:"column:credit_paid;not null;default:false"`
+	CreditPaidAt  *time.Time `json:"credit_paid_at" gorm:"column:credit_paid_at"`
+	IntegrityHash string     `json:"-" gorm:"column:integrity_hash;size:128;not null"`
 }
 
 // TableName نام جدول تراکنش‌ها.
 func (Transaction) TableName() string { return "wallet_transactions" }
 
 // BuildTransactionIntegrityFields فیلدهای HMAC تراکنش را برمی‌گرداند.
+// ورودی: تراکنش. خروجی: فیلدهای امضا شامل حساب اعتباری و وضعیت پرداخت‌شدن.
 func BuildTransactionIntegrityFields(t *Transaction) []string {
+	paid := "0"
+	if t.CreditPaid {
+		paid = "1"
+	}
+	paidAt := ""
+	if t.CreditPaidAt != nil {
+		paidAt = t.CreditPaidAt.UTC().Format(time.RFC3339)
+	}
+	return append(buildTransactionIntegrityFieldsWithCredit(t), paid, paidAt)
+}
+
+// buildTransactionIntegrityFieldsWithCredit فیلدهای HMAC قبل از وضعیت پرداخت‌شدن را برمی‌گرداند.
+// ورودی: تراکنش. خروجی: فیلدهای امضا شامل شناسه و نام حساب اعتباری.
+func buildTransactionIntegrityFieldsWithCredit(t *Transaction) []string {
+	creditAccountID := ""
+	if t.CreditAccountID != nil {
+		creditAccountID = strconv.FormatUint(uint64(*t.CreditAccountID), 10)
+	}
+	creditAccountName := ""
+	if t.CreditAccountName != nil {
+		creditAccountName = *t.CreditAccountName
+	}
+	return append(buildTransactionIntegrityFieldsLegacy(t), creditAccountID, creditAccountName)
+}
+
+// buildTransactionIntegrityFieldsLegacy فیلدهای HMAC تراکنش‌های قبل از حساب اعتباری را برمی‌گرداند.
+// ورودی: تراکنش. خروجی: فیلدهای امضای قدیمی.
+func buildTransactionIntegrityFieldsLegacy(t *Transaction) []string {
 	receptionID := ""
 	if t.ReceptionID != nil {
 		receptionID = strconv.FormatUint(uint64(*t.ReceptionID), 10)
@@ -157,8 +192,64 @@ func SignTransactionIntegrityHash(signer *integrity.Signer, t *Transaction) stri
 }
 
 // VerifyTransactionIntegrity یکپارچگی تراکنش را بررسی می‌کند.
+// ورودی: امضاکننده و تراکنش. خروجی: true اگر هش جدید یا هش قدیمی (بدون حساب اعتباری) معتبر باشد.
 func VerifyTransactionIntegrity(signer *integrity.Signer, t *Transaction) bool {
-	return signer.Verify(t.IntegrityHash, BuildTransactionIntegrityFields(t)...)
+	if signer.Verify(t.IntegrityHash, BuildTransactionIntegrityFields(t)...) {
+		return true
+	}
+	if signer.Verify(t.IntegrityHash, buildTransactionIntegrityFieldsWithCredit(t)...) {
+		return true
+	}
+	return signer.Verify(t.IntegrityHash, buildTransactionIntegrityFieldsLegacy(t)...)
+}
+
+// CreditAccount حساب اعتباری برای شارژ پرونده مالی از محل کسر سقف اعتبار.
+type CreditAccount struct {
+	gorm.Model
+	// نام اعتبار
+	Name string `json:"name" gorm:"column:name;size:200;not null"`
+	// توضیحات اعتبار
+	Description string `json:"description" gorm:"column:description;size:500;not null"`
+	// سقف اعتبار به ریال
+	CreditLimit int64 `json:"credit_limit" gorm:"column:credit_limit;not null"`
+	// مبلغ استفاده‌شده از سقف به ریال
+	UsedAmount int64 `json:"used_amount" gorm:"column:used_amount;not null"`
+	// فعال یا غیرفعال
+	IsActive bool `json:"is_active" gorm:"column:is_active;not null"`
+	// هش یکپارچگی
+	IntegrityHash string `json:"-" gorm:"column:integrity_hash;size:128;not null"`
+}
+
+// TableName نام جدول حساب‌های اعتباری.
+func (CreditAccount) TableName() string { return "credit_accounts" }
+
+// BuildCreditAccountIntegrityFields فیلدهای HMAC حساب اعتباری را برمی‌گرداند.
+// ورودی: حساب اعتباری. خروجی: فیلدهای امضا.
+func BuildCreditAccountIntegrityFields(a *CreditAccount) []string {
+	active := "0"
+	if a.IsActive {
+		active = "1"
+	}
+	return []string{
+		strconv.FormatUint(uint64(a.ID), 10),
+		a.Name,
+		a.Description,
+		strconv.FormatInt(a.CreditLimit, 10),
+		strconv.FormatInt(a.UsedAmount, 10),
+		active,
+	}
+}
+
+// SignCreditAccountIntegrityHash هش یکپارچگی حساب اعتباری را محاسبه می‌کند.
+// ورودی: امضاکننده و حساب. خروجی: هش HMAC.
+func SignCreditAccountIntegrityHash(signer *integrity.Signer, a *CreditAccount) string {
+	return signer.Sign(BuildCreditAccountIntegrityFields(a)...)
+}
+
+// VerifyCreditAccountIntegrity یکپارچگی حساب اعتباری را بررسی می‌کند.
+// ورودی: امضاکننده و حساب. خروجی: true اگر هش معتبر باشد.
+func VerifyCreditAccountIntegrity(signer *integrity.Signer, a *CreditAccount) bool {
+	return signer.Verify(a.IntegrityHash, BuildCreditAccountIntegrityFields(a)...)
 }
 
 // BuildBankAccountIntegrityFields فیلدهای HMAC حساب بانکی را برمی‌گرداند.

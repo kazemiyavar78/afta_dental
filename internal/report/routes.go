@@ -42,4 +42,9 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 		middleware.AuthorizationMiddleware(),
 		h.UserPerformanceByTransaction,
 	)
+	r.GET("/reports/credit-account-payments",
+		middleware.RequirePermission("reports.read"),
+		middleware.AuthorizationMiddleware(),
+		h.CreditAccountPayments,
+	)
 }

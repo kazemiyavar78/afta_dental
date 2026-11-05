@@ -21,6 +21,8 @@ type Repository interface {
 
 	CreateTransaction(tx *gorm.DB, t *Transaction) error
 	UpdateTransaction(tx *gorm.DB, t *Transaction) error
+	// UpdateTransactionCreditPaid فقط وضعیت پرداخت‌شدن و هش تراکنش کسر از اعتبار را ذخیره می‌کند.
+	UpdateTransactionCreditPaid(t *Transaction) error
 	FindTransactionByID(id uint) (*Transaction, error)
 	ListTransactionsByFileID(fileID uint) ([]Transaction, error)
 	FindReceptionCashAdded(receptionID uint) (*Transaction, error)
@@ -33,6 +35,15 @@ type Repository interface {
 	DeleteBankAccount(id uint) error
 	FindBankAccountByID(id uint) (*BankAccount, error)
 	ListBankAccounts() ([]BankAccount, error)
+
+	CreateCreditAccount(a *CreditAccount) error
+	UpdateCreditAccount(a *CreditAccount) error
+	DeleteCreditAccount(id uint) error
+	FindCreditAccountByID(id uint) (*CreditAccount, error)
+	ListCreditAccounts() ([]CreditAccount, error)
+	ListActiveCreditAccounts() ([]CreditAccount, error)
+	// TryConsumeCredit مبلغ را از مانده سقف کم می‌کند؛ اگر حساب غیرفعال باشد یا سقف کافی نباشد false برمی‌گرداند.
+	TryConsumeCredit(tx *gorm.DB, id uint, amount int64) (bool, error)
 
 	FindPatientWalletByFileID(fileID uint) (*PatientWallet, error)
 	GetCashFund() (*CashFund, error)
@@ -155,6 +166,21 @@ func (r *gormRepo) UpdateTransaction(tx *gorm.DB, t *Transaction) error {
 	return r.txOrDB(tx).Save(t).Error
 }
 
+// UpdateTransactionCreditPaid وضعیت پرداخت‌شدن کسر از اعتبار را ذخیره می‌کند.
+// ورودی: تراکنش با فیلدهای credit_paid، credit_paid_at و integrity_hash. خروجی: خطای دیتابیس.
+// از map استفاده می‌شود تا مقدار false به‌خاطر تگ default در GORM حذف نشود.
+func (r *gormRepo) UpdateTransactionCreditPaid(t *Transaction) error {
+	paidAt := any(gorm.Expr("NULL"))
+	if t.CreditPaidAt != nil {
+		paidAt = t.CreditPaidAt
+	}
+	return r.db.Model(&Transaction{}).Where("id = ?", t.ID).Updates(map[string]any{
+		"credit_paid":    t.CreditPaid,
+		"credit_paid_at": paidAt,
+		"integrity_hash": t.IntegrityHash,
+	}).Error
+}
+
 // FindTransactionByID تراکنش را با شناسه برمی‌گرداند.
 func (r *gormRepo) FindTransactionByID(id uint) (*Transaction, error) {
 	var t Transaction
@@ -248,4 +274,58 @@ func (r *gormRepo) FindPatientWalletByFileID(fileID uint) (*PatientWallet, error
 // GetCashFund رکورد صندوق را برمی‌گرداند.
 func (r *gormRepo) GetCashFund() (*CashFund, error) {
 	return r.GetOrCreateCashFund(nil)
+}
+
+// CreateCreditAccount حساب اعتباری جدید را ذخیره می‌کند.
+// ورودی: حساب. خروجی: خطای دیتابیس.
+func (r *gormRepo) CreateCreditAccount(a *CreditAccount) error {
+	return r.db.Create(a).Error
+}
+
+// UpdateCreditAccount حساب اعتباری را ذخیره می‌کند.
+// ورودی: حساب. خروجی: خطای دیتابیس.
+func (r *gormRepo) UpdateCreditAccount(a *CreditAccount) error {
+	return r.db.Save(a).Error
+}
+
+// DeleteCreditAccount حساب اعتباری را به‌صورت نرم حذف می‌کند.
+// ورودی: شناسه. خروجی: خطای دیتابیس.
+func (r *gormRepo) DeleteCreditAccount(id uint) error {
+	return r.db.Delete(&CreditAccount{}, id).Error
+}
+
+// FindCreditAccountByID حساب اعتباری را با شناسه برمی‌گرداند.
+// ورودی: شناسه. خروجی: حساب یا خطا.
+func (r *gormRepo) FindCreditAccountByID(id uint) (*CreditAccount, error) {
+	var a CreditAccount
+	err := r.db.First(&a, id).Error
+	return &a, err
+}
+
+// ListCreditAccounts همه حساب‌های اعتباری را برمی‌گرداند.
+// خروجی: لیست حساب‌ها یا خطا.
+func (r *gormRepo) ListCreditAccounts() ([]CreditAccount, error) {
+	var list []CreditAccount
+	err := r.db.Order("id DESC").Find(&list).Error
+	return list, err
+}
+
+// ListActiveCreditAccounts فقط حساب‌های اعتباری فعال را برمی‌گرداند.
+// خروجی: لیست حساب‌های فعال یا خطا.
+func (r *gormRepo) ListActiveCreditAccounts() ([]CreditAccount, error) {
+	var list []CreditAccount
+	err := r.db.Where("is_active = ?", true).Order("name ASC").Find(&list).Error
+	return list, err
+}
+
+// TryConsumeCredit مبلغ استفاده‌شده از سقف را اتمیک افزایش می‌دهد.
+// ورودی: تراکنش دیتابیس (nil یعنی اتصال فعلی)، شناسه حساب و مبلغ. خروجی: true اگر سقف کافی و حساب فعال باشد.
+func (r *gormRepo) TryConsumeCredit(tx *gorm.DB, id uint, amount int64) (bool, error) {
+	res := r.txOrDB(tx).Model(&CreditAccount{}).
+		Where("id = ? AND is_active = ? AND used_amount + ? <= credit_limit", id, true, amount).
+		UpdateColumn("used_amount", gorm.Expr("used_amount + ?", amount))
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }

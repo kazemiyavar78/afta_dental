@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+# Documentation sync rule
+
+After completing any task that changes code, configuration, dependencies, structure, or behavior:
+
+1. Update `docs/PROJECT_CONTEXT.md` to reflect the change.
+2. Only update the sections affected by the change. Do not rewrite unrelated sections.
+3. Keep the file factual and concise. Use file paths and function names instead of long prose.
+4. Never write secrets or real environment variable values into the docs.
+5. If a change makes an existing section wrong, correct it. Do not leave stale information.
+6. Add new TODOs or known issues you introduced, and remove the ones you resolved.
+7. Mention in your final reply that the documentation was updated and which sections changed.
+
+Do not create additional documentation files unless explicitly asked.

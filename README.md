@@ -97,6 +97,31 @@ go run ./cmd/seed-admin
 | GET/PUT | `/api/security/settings` | Admin | تنظیمات امنیتی |
 | GET/DELETE | `/api/sessions` | احراز شده | مدیریت نشست |
 | POST/GET | `/api/reception` | Reception+ | نمونه پذیرش |
+| GET/POST | `/api/credit-accounts` | `credit_account.read` / `credit_account.create` | لیست و ایجاد حساب اعتباری |
+| GET | `/api/credit-accounts/active` | `credit_charge.create` | حساب‌های اعتباری فعال برای پرداخت |
+| GET/PUT/DELETE | `/api/credit-accounts/:id` | `credit_account.read/update/delete` | مشاهده، ویرایش و حذف حساب اعتباری |
+| POST | `/api/wallet/credit-charge` | `credit_charge.create` | شارژ پرونده مالی از محل کسر اعتبار |
+| PATCH | `/api/wallet/transactions/:id/credit-paid` | `credit_charge.update` | تیک پرداخت‌شدن تراکنش کسر از اعتبار |
+| GET | `/api/reports/credit-account-payments` | `reports.read` | گزارش پرداخت‌های حساب اعتباری |
+
+## حساب‌های اعتباری
+
+حساب اعتباری روش پرداخت کیف پول است. فیلدها: نام اعتبار، توضیحات، سقف اعتبار (ریال) و وضعیت فعال/غیرفعال.
+
+| مجوز | کاربرد |
+|---|---|
+| `credit_account.read` | دیدن حساب‌ها |
+| `credit_account.create` | ایجاد حساب |
+| `credit_account.update` | ویرایش حساب |
+| `credit_account.delete` | حذف حساب بدون پرداخت |
+| `credit_charge.create` | شارژ پرونده با فرم انتخاب حساب، مبلغ و توضیحات |
+| `credit_charge.update` | تیک زدن پرداخت‌شدن تراکنش کسر از اعتبار |
+
+سقف اعتبار با هر شارژ کم می‌شود. حساب غیرفعال در پرداخت جدید انتخاب نمی‌شود. حذف فقط وقتی مجاز است که هنوز پرداختی ثبت نشده باشد. ویرایش سقف کمتر از مبلغ استفاده‌شده رد می‌شود.
+
+تراکنش کسر از اعتبار در ابتدا پرداخت‌نشده است. در پرونده مالی و در گزارش، با مجوز `credit_charge.update` می‌توان تیک «پرداخت شده» را زد یا برداشت. این تیک سقف اعتبار و موجودی کیف پول را تغییر نمی‌دهد.
+
+گزارش `GET /api/reports/credit-account-payments` پرداخت‌ها را با فیلتر از تاریخ، تا تاریخ و نام حساب برمی‌گرداند و وضعیت پرداخت‌شدن را هم نشان می‌دهد.
 
 ## CSRF
 
