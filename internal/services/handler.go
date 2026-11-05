@@ -16,8 +16,7 @@ func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 // Create خدمت جدید ایجاد می‌کند.
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -66,8 +65,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 	var req UpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -116,8 +114,7 @@ func (h *Handler) ListExcludedServices(c *gin.Context) {
 // AddExcludedServices خدمات را به لیست خارج‌شده سازمان اضافه می‌کند.
 func (h *Handler) AddExcludedServices(c *gin.Context) {
 	var req ExcludedServicesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -132,8 +129,7 @@ func (h *Handler) AddExcludedServices(c *gin.Context) {
 // RemoveExcludedServices خدمات را از لیست خارج‌شده سازمان حذف می‌کند.
 func (h *Handler) RemoveExcludedServices(c *gin.Context) {
 	var req ExcludedServicesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)

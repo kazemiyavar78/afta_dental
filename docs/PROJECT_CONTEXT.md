@@ -54,8 +54,8 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/platform/db` — SQL Server connection (max 25 open, 10 idle, 5 min lifetime).
 - `internal/platform/migrate` — GORM AutoMigrate / DropTable.
 - `internal/platform/testutil` — shared test helpers: Gin context, in-memory audit recorder, and (integration build only) a SQL Server transaction that rolls back.
-- `internal/platform/apperror` — API error codes and user messages.
-- `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check.
+- `internal/platform/apperror` — API error codes and user messages. `ErrValidation` is code `VALIDATION_ERROR`, HTTP 400, user message «اطلاعات ورودی نامعتبر یا ناقص است.»
+- `internal/platform/middleware` — recovery, headers, request log, CORS, rate limit, session, CSRF, security-code check, permission check, and `BindJSON` / `BindQuery`.
 - `internal/platform/security/encryption` — AES-GCM and per-entity integrity hashes.
 - `internal/platform/security/integrity` — HMAC signer.
 - `internal/platform/security/session` — `Sessions` table and `session_id` cookie.
@@ -135,9 +135,17 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 ## 5. API and UI routes
 
-Base path `/api`. Errors from middleware are JSON `{ "error": string, "code": string }`. Success bodies are the DTO named below. List endpoints return a JSON array unless noted. All routes except login and health require the session cookie. POST/PUT/PATCH/DELETE also require CSRF.
+Base path `/api`. Success bodies are the DTO named below. List endpoints return a JSON array unless noted. All routes except login and health require the session cookie. POST/PUT/PATCH/DELETE also require CSRF.
 
 Permission names are OR. Admin (`HasAllPermissions`) bypasses them.
+
+### Errors
+
+Responses from `middleware.WriteError` are JSON `{ "error": string, "code": string }`. An `apperror.AppError` uses its HTTP status and Persian user message. Any other error is HTTP 500, code `INTERNAL`, message «خطای داخلی سرور رخ داده است.» The original error text is not returned.
+
+Invalid JSON or query input is a Gin error, not an `AppError`. `middleware.BindJSON` and `middleware.BindQuery` answer that with HTTP 400, code `VALIDATION_ERROR`, message «اطلاعات ورودی نامعتبر یا ناقص است.» (`apperror.ErrValidation`, D-08). The response has no field name and no submitted value. The server log records the field name and the validation tag only. URI binding is unchanged.
+
+`UpdateSettingByID` does not write the setting name or value to stdout. If the save fails, the log line is the key name and the error, not the new value (D-09).
 
 ### Health and auth (`internal/user/routes.go`, `cmd/server/main.go`)
 
@@ -433,7 +441,7 @@ Shared Go helpers live in `internal/platform/testutil`:
 - `NewTestGinContext` builds an `httptest` request and a Gin context. `SetUserID`, `SetRoleName`, `SetPermissions`, and `SetSession` write the same context keys as `internal/platform/middleware` (`userID`, `roleName`, `permissions`, `session`, `sessionID`). No new key names.
 - `FakeAuditRecorder` stores `LogEvent` calls in memory (actor, event type, description). It implements `audit.EventLogger`. Services are still constructed with `*audit.Manager`.
 
-`TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestComputeRowHash` calls `Manager.computeRowHash` and compares it with an independent HMAC. No injectable clock was added; `computeRowHash` already takes the timestamp.
+`TestWriteError_AppErrorReturnsCodeAndMessage` and `TestWriteError_UnknownErrorIsGeneric500` call `middleware.WriteError` through that Gin helper. The unknown-error case expects HTTP 500, the public internal message, and no leak of the original error text. `TestD08_BindJSON_EmptyOrIncompleteReturnsValidationError` expects HTTP 400 and `VALIDATION_ERROR` for an empty body and for a missing required field, with no field name in the response. `TestD08_BindJSON_ValidBodyFillsStruct` expects `BindJSON` to return true and fill the struct. `TestD08_BindQuery_InvalidValueDoesNotLeakFieldValue` expects the submitted query value to stay out of the response and the server log. `TestComputeRowHash` calls `Manager.computeRowHash` and compares it with an independent HMAC. No injectable clock was added; `computeRowHash` already takes the timestamp.
 
 `TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. Neither test is part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
 

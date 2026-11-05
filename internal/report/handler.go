@@ -20,8 +20,7 @@ func NewHandler(s *Service) *Handler {
 // RevenueByOrganization گزارش درآمد به تفکیک سازمان را برمی‌گرداند.
 func (h *Handler) RevenueByOrganization(c *gin.Context) {
 	var q RevenueByOrganizationQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -36,8 +35,7 @@ func (h *Handler) RevenueByOrganization(c *gin.Context) {
 // DoctorPerformanceByOrganization گزارش کارکرد پزشکان به تفکیک سازمان را برمی‌گرداند.
 func (h *Handler) DoctorPerformanceByOrganization(c *gin.Context) {
 	var q DoctorPerformanceByOrganizationQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -52,8 +50,7 @@ func (h *Handler) DoctorPerformanceByOrganization(c *gin.Context) {
 // DoctorPerformanceByService گزارش کارکرد پزشکان به تفکیک خدمت را برمی‌گرداند.
 func (h *Handler) DoctorPerformanceByService(c *gin.Context) {
 	var q DoctorPerformanceByServiceQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -68,8 +65,7 @@ func (h *Handler) DoctorPerformanceByService(c *gin.Context) {
 // DoctorPerformancePatientList لیست بیماران پذیرش‌شده توسط پزشکان را برمی‌گرداند.
 func (h *Handler) DoctorPerformancePatientList(c *gin.Context) {
 	var q DoctorPerformancePatientListQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -84,8 +80,7 @@ func (h *Handler) DoctorPerformancePatientList(c *gin.Context) {
 // RevenueByDoctors گزارش درآمد به تفکیک پزشکان را برمی‌گرداند.
 func (h *Handler) RevenueByDoctors(c *gin.Context) {
 	var q RevenueByDoctorsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -100,8 +95,7 @@ func (h *Handler) RevenueByDoctors(c *gin.Context) {
 // UserPerformanceByReception گزارش کارکرد کاربران بر اساس پذیرش را برمی‌گرداند.
 func (h *Handler) UserPerformanceByReception(c *gin.Context) {
 	var q UserPerformanceByReceptionQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -116,8 +110,7 @@ func (h *Handler) UserPerformanceByReception(c *gin.Context) {
 // CreditAccountPayments گزارش پرداخت‌های حساب‌های اعتباری را برمی‌گرداند.
 func (h *Handler) CreditAccountPayments(c *gin.Context) {
 	var q CreditAccountPaymentsQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 
@@ -132,8 +125,7 @@ func (h *Handler) CreditAccountPayments(c *gin.Context) {
 // UserPerformanceByTransaction گزارش کارکرد کاربران بر اساس تراکنش مالی را برمی‌گرداند.
 func (h *Handler) UserPerformanceByTransaction(c *gin.Context) {
 	var q UserPerformanceByTransactionQuery
-	if err := c.ShouldBindQuery(&q); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &q) {
 		return
 	}
 

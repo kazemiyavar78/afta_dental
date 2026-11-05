@@ -16,8 +16,7 @@ func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 // Create بیمار جدید ایجاد می‌کند.
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
@@ -59,8 +58,7 @@ func (h *Handler) GetByID(c *gin.Context) {
 // List لیست بیماران یا نتیجه جستجو بر اساس query را برمی‌گرداند.
 func (h *Handler) List(c *gin.Context) {
 	var req SearchRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindQuery(c, &req) {
 		return
 	}
 
@@ -94,8 +92,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 	var req UpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)

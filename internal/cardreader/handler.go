@@ -16,8 +16,7 @@ func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 // SimulateCharge پاسخ آزمایشی کارتخوان را برمی‌گرداند.
 func (h *Handler) SimulateCharge(c *gin.Context) {
 	var req ChargeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.SimulateCharge(req)

@@ -65,8 +65,7 @@ func (h *Handler) ListTransactions(c *gin.Context) {
 // AdjustCash افزایش/کاهش اعتبار نقدی.
 func (h *Handler) AdjustCash(c *gin.Context) {
 	var req CashAdjustRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.AdjustCash(req, actorID(c), c.ClientIP())
@@ -80,8 +79,7 @@ func (h *Handler) AdjustCash(c *gin.Context) {
 // AdjustCardToCard افزایش/کاهش کارت‌به‌کارت.
 func (h *Handler) AdjustCardToCard(c *gin.Context) {
 	var req CardToCardAdjustRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.AdjustCardToCard(req, actorID(c), c.ClientIP())
@@ -95,8 +93,7 @@ func (h *Handler) AdjustCardToCard(c *gin.Context) {
 // ChargeFromCardReader شارژ از کارتخوان آزمایشی.
 func (h *Handler) ChargeFromCardReader(c *gin.Context) {
 	var req CardReaderChargeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.ChargeFromCardReader(req, actorID(c), c.ClientIP())
@@ -110,8 +107,7 @@ func (h *Handler) ChargeFromCardReader(c *gin.Context) {
 // ChargeFromCreditAccount شارژ پرونده از محل کسر حساب اعتباری.
 func (h *Handler) ChargeFromCreditAccount(c *gin.Context) {
 	var req CreditChargeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.ChargeFromCreditAccount(req, actorID(c), c.ClientIP())
@@ -130,8 +126,7 @@ func (h *Handler) SetCreditTransactionPaid(c *gin.Context) {
 		return
 	}
 	var req SetCreditPaidRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.SetCreditTransactionPaid(uint(id), req.CreditPaid, actorID(c), c.ClientIP())
@@ -170,8 +165,7 @@ func (h *Handler) GetBankAccount(c *gin.Context) {
 // CreateBankAccount ایجاد حساب بانکی.
 func (h *Handler) CreateBankAccount(c *gin.Context) {
 	var req CreateBankAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.CreateBankAccount(req, actorID(c), c.ClientIP())
@@ -190,8 +184,7 @@ func (h *Handler) UpdateBankAccount(c *gin.Context) {
 		return
 	}
 	var req UpdateBankAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.UpdateBankAccount(uint(id), req, actorID(c), c.ClientIP())
@@ -254,8 +247,7 @@ func (h *Handler) GetCreditAccount(c *gin.Context) {
 // CreateCreditAccount ایجاد حساب اعتباری.
 func (h *Handler) CreateCreditAccount(c *gin.Context) {
 	var req CreateCreditAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.CreateCreditAccount(req, actorID(c), c.ClientIP())
@@ -274,8 +266,7 @@ func (h *Handler) UpdateCreditAccount(c *gin.Context) {
 		return
 	}
 	var req UpdateCreditAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	resp, err := h.service.UpdateCreditAccount(uint(id), req, actorID(c), c.ClientIP())

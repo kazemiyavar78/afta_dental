@@ -14,8 +14,7 @@ func NewHandler(s *Service) *Handler { return &Handler{service: s} }
 
 func (h *Handler) Create(c *gin.Context) {
 	var req CreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		middleware.WriteError(c, err)
+	if !middleware.BindJSON(c, &req) {
 		return
 	}
 	uid, _ := c.Get(middleware.ContextKeyUserID)
