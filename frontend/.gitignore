@@ -1,5 +1,5 @@
-# Logs
-logs
+# Logs — فقط پوشه logs در ریشه frontend؛ src/modules/logs کد صفحه است (D-10)
+/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*

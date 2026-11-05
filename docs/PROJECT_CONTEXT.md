@@ -78,9 +78,10 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 - `internal/specialcode` — third-party “special code” on a reception.
 - `internal/regulation` — service-interval rules and required photos.
 - `internal/report` — SQL report queries.
-- `internal/logs` — security-event list API.
+- `internal/logs` — security-event list API. The root `.gitignore` and `frontend/.gitignore` use `/logs/` so only a `logs` directory next to that file is ignored. `*.log` still ignores log files. `internal/logs` and `frontend/src/modules/logs` are source and are tracked (D-10).
 - `docs/` — this file, IIS notes, AFTA checklist, report design notes, and `docs/afta/check-output/` for check logs.
 - `scripts/afta-check.ps1` — one check run: vet, unit tests, integration tests, govulncheck, frontend test and build, `npm audit`, read-only SQL in `scripts/db-checks/`.
+- `scripts/afta-discovery.ps1` — discovery run. Masking and DSN conversion come from `scripts/lib/redact.ps1` and `scripts/lib/db.ps1`. A null SQL parameter is sent as `DBNull`. A query result is returned as one `DataTable` so PowerShell does not unroll the rows.
 - `scripts/db-checks/` — optional read-only `.sql` files. The folder ships with a README and no queries yet.
 - `scripts/lib/redact.ps1` — masks passwords, connection strings, and session ids in script output. `scripts/lib/db.ps1` converts a DSN for those scripts and does not open a connection by itself.
 - `.github/workflows/ci.yml` — GitHub Actions on push and pull_request to `main`. Backend job on `windows-latest` (vet, unit test, govulncheck). Frontend job on `ubuntu-latest` (`npm ci`, test, build, `npm audit`). No secrets and no database variables.
@@ -145,7 +146,7 @@ Responses from `middleware.WriteError` are JSON `{ "error": string, "code": stri
 
 Invalid JSON or query input is a Gin error, not an `AppError`. `middleware.BindJSON` and `middleware.BindQuery` answer that with HTTP 400, code `VALIDATION_ERROR`, message «اطلاعات ورودی نامعتبر یا ناقص است.» (`apperror.ErrValidation`, D-08). The response has no field name and no submitted value. The server log records the field name and the validation tag only. URI binding is unchanged.
 
-`UpdateSettingByID` does not write the setting name or value to stdout. If the save fails, the log line is the key name and the error, not the new value (D-09).
+`UpdateSettingByID` does not write the setting name or value to stdout. If the save fails, the log line is the key name and the error, not the new value (D-09). `CheckWorkHours` does not print the work-hour start or end values. `cmd/seed-admin` still prints the admin username and password; that stays until phase 6.
 
 ### Health and auth (`internal/user/routes.go`, `cmd/server/main.go`)
 
@@ -410,7 +411,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 
 ## 10. Known issues, gaps, and TODOs
 
-- `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` are written and have not been executed here. Status: waiting for `scripts/afta-check.ps1` on a development database (`[db-test-pending]`, traceability D-01).
+- D-01 is done pending the consultant. `docs/afta/check-output/discovery-20261105-2123.txt` (section Q6) lists `LogCleanupSummaries` and `UploadCounters` on the development database. `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` remain integration tests and are not part of `go test ./...`.
 - `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
 - README is behind the code on Go version (docs say 1.22+, `go.mod` is 1.26.4), sample-only wording for reception/organization/fund/tariff, and a root `.env.example` that is not in the repo.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
