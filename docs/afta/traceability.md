@@ -74,6 +74,7 @@
 | D-28 | Discovery | حجم جدول لاگ حدود ۱٫۷ مگابایت است و آستانه ۱۰۰ مگابایت است | FAU_STG.3، FAU_STG.4 | ۳ | `SecurityEvents` | — | باز | Q18. پاک‌سازی هرگز اجرا نشده. آزمون آستانه به مقدار کوچک در تست نیاز دارد. |
 | D-29 | Discovery | فیلدهای بیمار در پایگاه متن ساده هستند | — | ۵ | مدل بیمار | — | باز | Q6: `national_code`، نام، تلفن، آدرس. الزام در PP-07. |
 | D-30 | Discovery | مجوز بدون route و متغیر محیطی بی‌اثر مانده است | — | ۶ | کاتالوگ مجوز، `internal/platform/config` | — | باز | `fund.update`، `fund.delete`، `tariff.delete` مسیر ندارند. `LOGIN_RATE_LIMIT_PER_MINUTE` و `INTEGRITY_TICKER` خوانده می‌شوند و در اجرا اثر ندارند. دوگانگی migration در D-01 بسته شده است. |
+| D-31 | afta-check | آسیب‌پذیری axios/follow-redirects/react-router/zod | AVA_VAN.1 | ۱ | `frontend/package-lock.json` | `D-31 production dependency lock`، `npm test`، `npm run build`، `npm audit --omit=dev` | انجام‌شده | خروجی check-20261105-2220. `npm audit fix` بدون `--force` کافی بود؛ بازه `package.json` از قبل نسخه اصلاح‌شده را می‌پذیرفت و فقط lock عوض شد. قفل: axios 1.21.0، follow-redirects 1.16.2، react-router و react-router-dom 7.18.5، zod 4.6.7. `xlsx@0.18.5` دست نخورده و فاز ۵ است (PP-18). |
 
 ## شکاف‌های PP
 
@@ -97,4 +98,4 @@
 | PP-16 | PP | محصول نسخه یکتا ندارد و نسخه فقط به مدیر نشان داده نمی‌شود | ALC_CMC.1 | ۶ | `frontend/package.json` | — | باز | نسخه فرانت `0.0.0` است. |
 | PP-17 | PP | به‌روزرسانی دستی با درهم‌ساز منتشرشده وجود ندارد | FPT_TUD | ۶ | — | — | باز | |
 | PP-18 | PP | `xlsx@0.18.5` آسیب‌پذیری شناخته‌شده دارد و دیگر نگهداری نمی‌شود | AVA_VAN.1 | ۵ | `frontend/package.json` | — | باز | نقشه راه فونت PDF از CDN را هم آورده. فایل فونت محلی است و کمبود `@font-face` در D-20 است. |
-| PP-19 | PP | `govulncheck` و `npm audit` در CI شکست job را قطع نمی‌کنند | AVA_VAN.1 | ۵ | `.github/workflows/ci.yml` | — | باز | تا جایگزینی xlsx در فاز ۵ `continue-on-error` می‌مانند. ردیف CI خود زیرساخت را جدا نگه می‌دارد. |
+| PP-19 | PP | `govulncheck` و `npm audit` در CI شکست job را قطع نمی‌کنند | AVA_VAN.1 | ۵ | `.github/workflows/ci.yml` | — | باز | تا جایگزینی xlsx در فاز ۵ `continue-on-error` می‌مانند. آسیب‌پذیری high مربوط به axios، follow-redirects، react-router و zod در D-31 بسته شد و در audit تولید فقط xlsx می‌ماند. ردیف CI خود زیرساخت را جدا نگه می‌دارد. |

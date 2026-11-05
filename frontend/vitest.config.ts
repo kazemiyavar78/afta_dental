@@ -12,7 +12,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.{ts,tsx}'],
+    // D-31 بیرون از src است تا tsc برنامه به node:fs نیاز پیدا نکند.
+    include: ['src/**/*.test.{ts,tsx}', 'd31-production-deps.test.ts'],
     setupFiles: ['./src/test-setup.ts'],
   },
 });

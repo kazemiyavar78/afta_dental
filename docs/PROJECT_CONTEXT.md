@@ -31,12 +31,12 @@ Versions below are from `go.mod`, `frontend/package.json`, and `frontend/tsconfi
 
 - React 19.2.7, React DOM 19.2.7
 - TypeScript ~6.0.2, target ES2022 (`frontend/tsconfig.app.json`)
-- Vite ^8.1.1, `@vitejs/plugin-react` ^6.0.3
-- Vitest ^5.0.0, jsdom ^29.1.1, Testing Library React ^16.3.3
+- Vite ^8.1.1 (lock 8.3.6), `@vitejs/plugin-react` ^6.0.3
+- Vitest ^5.0.0 (lock 5.1.0), jsdom ^29.1.1, Testing Library React ^16.3.3
 - UI: antd ^6.5.0, `@ant-design/icons` ^6.3.2, `antd-jalali-v5` ^1.1.0
-- Data: `@tanstack/react-query` ^5.101.2, axios ^1.18.1, zustand ^5.0.14
-- Forms: react-hook-form ^7.81.0, zod ^4.4.3, `@hookform/resolvers` ^5.4.0
-- Routing: react-router-dom ^7.18.1
+- Data: `@tanstack/react-query` ^5.101.2, axios ^1.18.1 (lock 1.21.0), zustand ^5.0.14
+- Forms: react-hook-form ^7.81.0, zod ^4.4.3 (lock 4.6.7), `@hookform/resolvers` ^5.4.0
+- Routing: react-router-dom ^7.18.1 (lock 7.18.5, and the same for `react-router`; `follow-redirects` lock 1.16.2)
 - Dates: dayjs ^1.11.21, jalaliday ^3.1.1
 - Export: `@react-pdf/renderer` ^4.9.0, xlsx ^0.18.5
 - Node.js `22.17.0` (`.nvmrc` and `frontend/package.json` `engines`). This is the version installed on the development machine and is the Node 22 LTS line. CI installs it via `node-version-file: .nvmrc`.
@@ -412,7 +412,7 @@ Dev workflow: backend with `DEV_MODE=true` or `APP_ENV=development`, plus `npm r
 ## 10. Known issues, gaps, and TODOs
 
 - D-01 is done pending the consultant. `docs/afta/check-output/discovery-20261105-2123.txt` (section Q6) lists `LogCleanupSummaries` and `UploadCounters` on the development database. `TestIntegration_AutoMigrate_AllModelsCreate` and `TestIntegration_LogCleanupAndUploadCounterTablesExist` remain integration tests and are not part of `go test ./...`.
-- `xlsx@0.18.5` has a known vulnerability and is scheduled to be replaced in phase 5. Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` are `continue-on-error` and must become blocking in phase 5.
+- D-31 is done. High advisories for axios, follow-redirects, react-router/react-router-dom, and zod were closed by `npm audit fix` without `--force`. The lockfile pins axios 1.21.0, follow-redirects 1.16.2, react-router 7.18.5, react-router-dom 7.18.5, and zod 4.6.7. The `package.json` ranges already allowed those versions, so only `frontend/package-lock.json` changed. `npm audit --omit=dev` then reports only `xlsx@0.18.5`. That package has no npm fix and stays until phase 5 (PP-18). Until then, `govulncheck` and `npm audit` in `.github/workflows/ci.yml` stay `continue-on-error` and must become blocking in phase 5 (PP-19).
 - Root `.env.example` is not in the repository. README lists environment variable names and purpose only. `frontend/.env.example` documents `VITE_API_BASE_URL`.
 - File headers in `internal/organization`, `internal/fund`, and matching frontend organization/fund files still say the module is a sample for later phases. Those packages have working CRUD (fund is create/read only).
 - `OrganizationPackageRelation` is migrated and unused. Organization rows store `PackageID` and `CenterPackageID` directly.
@@ -446,8 +446,8 @@ Shared Go helpers live in `internal/platform/testutil`:
 
 `TestIntegration_AutoMigrate_AllModelsCreate` runs `migrate.Migrate` on the same model list as `cmd/server/main.go` and fails if any table returns an error. `TestIntegration_LogCleanupAndUploadCounterTablesExist` then reads `INFORMATION_SCHEMA.TABLES` for `LogCleanupSummaries` and `UploadCounters`. Neither test is part of `go test ./...`. `TestCombineMigrateErrors_EmptyIsNil` and `TestCombineMigrateErrors_NamesEveryTable` check error aggregation without a database.
 
-Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`.
+Frontend component tests use `renderWithProviders` (RTL, `fa_IR`, default Ant Design theme, React Query with retry off, MemoryRouter). `PageHeader` has a sample test. Vitest setup stays `frontend/src/test-setup.ts`. `frontend/d31-production-deps.test.ts` reads `package-lock.json` and expects the D-31 pins (axios 1.21.0, follow-redirects 1.16.2, react-router and react-router-dom 7.18.5, zod 4.6.7) and unchanged `xlsx@0.18.5`. It lives outside `src` so `tsc` does not need Node types.
 
 `scripts/afta-check.ps1` runs, in order, `GO_VET`, `GO_TEST_UNIT` (`go test ./... -count=1`), `GO_TEST_INTEGRATION` (`go test -tags integration ./... -count=1`), `GOVULNCHECK` (prints `go install golang.org/x/vuln/cmd/govulncheck@latest` and skips when the command is missing), `FRONT_TEST`, `FRONT_BUILD`, `NPM_AUDIT` (`npm audit --omit=dev` in `frontend/`), and `DB_CHECKS` (every `scripts/db-checks/*.sql`, read-only, each in a transaction that rolls back). A failed section does not stop the later sections. The text file ends with one status line per section. Output goes through `scripts/lib/redact.ps1`. Add new database checks as `.sql` files in that folder; do not add a second check script.
 
-`.github/workflows/ci.yml` repeats the no-database parts on GitHub: vet, `go test ./... -count=1`, non-blocking `govulncheck`, frontend test, frontend build, and non-blocking `npm audit --omit=dev --audit-level=high`. It does not run integration tests or `scripts/db-checks/`. `govulncheck` and `npm audit` stay non-blocking until phase 5, when `xlsx@0.18.5` is replaced and both steps must fail the job.
+`.github/workflows/ci.yml` repeats the no-database parts on GitHub: vet, `go test ./... -count=1`, non-blocking `govulncheck`, frontend test, frontend build, and non-blocking `npm audit --omit=dev --audit-level=high`. It does not run integration tests or `scripts/db-checks/`. After D-31 that production audit reports only `xlsx@0.18.5`. `govulncheck` and `npm audit` stay non-blocking until phase 5, when that package is replaced and both steps must fail the job.
